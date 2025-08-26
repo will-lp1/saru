@@ -6,9 +6,10 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
 import type { Document } from '@snow-leopard/db';
-import { generateUUID } from '@/lib/utils';
+import { generateUUID, versionCache } from '@/lib/utils';
 import { DocumentActions } from '@/components/document/actions';
 import { VersionHeader } from '@/components/document/version-header';
+import { VersionTimeline } from '@/components/document/version-timeline';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Input } from '../ui/input';
@@ -66,8 +67,45 @@ export function AlwaysVisibleArtifact({
 
   const [documents, setDocuments] = useState<Document[]>(initialDocuments);
   const [currentVersionIndex, setCurrentVersionIndex] = useState<number>(initialDocuments.length > 0 ? initialDocuments.length - 1 : -1);
+  
+  useEffect(() => {
+    if (initialDocumentId && initialDocumentId !== 'init') {
+      const fetchAllVersions = async () => {
+        try {
+          // Try to get cached versions first
+          const userId = user?.id;
+          if (userId) {
+            const cachedVersions = await versionCache.getVersions(initialDocumentId, userId);
+            if (cachedVersions) {
+              console.log('[DocumentWorkspace] Using cached versions for', initialDocumentId);
+              setDocuments(cachedVersions);
+              setCurrentVersionIndex(cachedVersions.length > 0 ? cachedVersions.length - 1 : -1);
+              return;
+            }
+          }
+          
+          // Fetch from API if not cached
+          console.log('[DocumentWorkspace] Fetching versions from API for', initialDocumentId);
+          const response = await fetch(`/api/document?id=${initialDocumentId}&includeVersions=true`);
+          if (response.ok) {
+            const allVersions = await response.json();
+            setDocuments(allVersions);
+            setCurrentVersionIndex(allVersions.length > 0 ? allVersions.length - 1 : -1);
+            
+            // Cache the versions
+            if (userId) {
+              await versionCache.setVersions(initialDocumentId, allVersions, userId);
+            }
+          }
+        } catch (error) {
+          console.error('[DocumentWorkspace] Error fetching all versions:', error);
+        }
+      };
+      
+      fetchAllVersions();
+    }
+  }, [initialDocumentId, user?.id]);
 
-  // Inline document management functions
   const renameDocument = async (newTitle: string) => {
     if (isRenamingDocument || !document.documentId || document.documentId === 'init') return;
 
@@ -326,6 +364,12 @@ export function AlwaysVisibleArtifact({
     });
   }, [documents, mode, startTransition]);
 
+  const handleVersionChangeByIndex = useCallback((index: number) => {
+    if (index < 0 || index >= documents.length) return;
+    setCurrentVersionIndex(index);
+    setMode('diff');
+  }, [documents.length]);
+
   const getContentForVersion = useCallback((index: number): string => {
     if (!documents || index < 0 || index >= documents.length) return '';
     return documents[index].content ?? '';
@@ -389,8 +433,7 @@ export function AlwaysVisibleArtifact({
           <SidebarTrigger />
         </div>
 
-        <div className="flex flex-col items-center justify-center h-full gap-8 px-4 text-muted-foreground">
-          {/* Mini preview card */}
+        <div className="flex flex-col items-center justify-center h-full gap-8 px-4 text-muted-foreground"> 
           <Card className="w-44 h-32 sm:w-52 sm:h-36 md:w-56 md:h-40 border border-border shadow-sm overflow-hidden bg-background">
             <div className="h-5 bg-muted flex items-center px-2 text-[9px] text-muted-foreground/80 font-mono gap-1">
               <Skeleton className="h-2.5 w-3/5" />
@@ -402,13 +445,11 @@ export function AlwaysVisibleArtifact({
             </div>
           </Card>
 
-          {/* Heading + description */}
           <div className="text-center">
             <h3 className="text-lg font-medium mb-1 text-foreground ">Document Not Found</h3>
             <p className="text-sm">Create a new document?</p>
           </div>
 
-          {/* Action buttons */}
           <div className="flex flex-col gap-4 w-full max-w-md">
             <Button
               size="sm"
@@ -471,7 +512,7 @@ export function AlwaysVisibleArtifact({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           {documents && documents.length > 0 && (
             <DocumentActions
               content={editorContent}
@@ -481,6 +522,7 @@ export function AlwaysVisibleArtifact({
               handleVersionChange={handleVersionChange}
               currentVersionIndex={currentVersionIndex}
               isCurrentVersion={isCurrentVersion}
+              documents={documents}
             />
           )}
           {latestDocument && (
@@ -496,6 +538,14 @@ export function AlwaysVisibleArtifact({
       </div>
       
       <div className="bg-background text-foreground dark:bg-black dark:text-white h-full overflow-y-auto !max-w-full items-center relative">
+        {documents && documents.length > 1 && (
+          <VersionTimeline
+            versions={documents}
+            currentVersionIndex={currentVersionIndex}
+            onVersionChange={handleVersionChangeByIndex}
+          />
+        )}
+
         {!isCurrentVersion && documents && documents.length > 1 && (
           <VersionHeader
             key={`${currentDocument?.id}-${currentVersionIndex}`}

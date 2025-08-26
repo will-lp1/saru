@@ -189,7 +189,7 @@ export async function saveDocument({
 }): Promise<(typeof schema.Document.$inferSelect)> {
   try {
     const now = new Date();
-    const newVersionData = {
+    const newDocument = {
       id,
       title,
       content,
@@ -202,8 +202,22 @@ export async function saveDocument({
 
     const inserted = await db
       .insert(schema.Document)
-      .values(newVersionData)
+      .values(newDocument)
       .returning();
+
+
+    // appending latent version
+    const newVersion = {
+      documentId: newDocument.id,
+      content: newDocument.content,
+      previousVersionId: null,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.insert(schema.DocumentVersion).values(newVersion);
+    
 
     console.log(`[DB Query - saveDocument] Saved new version for doc ${id}, user ${userId}`);
     if (!inserted || inserted.length === 0) {
@@ -215,6 +229,187 @@ export async function saveDocument({
     throw new Error(`Failed to save document version: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
+
+
+export async function updateDocumentVersion({
+  documentId,
+  content,
+  previousContent
+}: {
+  documentId: string;
+  content: string;
+  previousContent?: string;
+}): Promise<(typeof schema.DocumentVersion.$inferSelect)> {
+  try {
+    const data = await db.select().from(schema.DocumentVersion).where(eq(schema.DocumentVersion.documentId, documentId)).orderBy(desc(schema.DocumentVersion.createdAt)).limit(1);
+    if (!data || data.length === 0) {
+      throw new Error(`No document version found for document ${documentId}`);
+    }
+    const latestVersion = data[0].version;
+    
+    // Calculate diff content if previous content is provided
+    const diffContent = previousContent ? calculateDiff(previousContent, content) : null;
+    
+    const newVersion = {
+      documentId: documentId,
+      content: content,
+      diffContent: diffContent,
+      previousVersionId: data[0].id,
+      version: latestVersion + 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await db.insert(schema.DocumentVersion).values(newVersion);
+    return newVersion as (typeof schema.DocumentVersion.$inferSelect);
+  } catch (error) {
+    console.error(`[DB Query - updateDocumentVersion] Error updating document version for doc ${documentId}:`, error);
+    throw new Error(`Failed to update document version: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// Helper function to calculate diff between two content strings
+function calculateDiff(oldContent: string, newContent: string): string {
+  // Simple diff calculation - you can enhance this with more sophisticated diff algorithms
+  if (oldContent === newContent) return '';
+  
+  // For now, return a simple diff representation
+  // In a real implementation, you might want to use a proper diff library
+  return JSON.stringify({
+    type: 'content_change',
+    oldLength: oldContent.length,
+    newLength: newContent.length,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Creates a new document version after debounce period
+ * This function is called when user stops typing for 5 seconds
+ */
+export async function createDebouncedDocumentVersion({
+  documentId,
+  content,
+  userId
+}: {
+  documentId: string;
+  content: string;
+  userId: string;
+}): Promise<(typeof schema.DocumentVersion.$inferSelect) | null> {
+  try {
+    const latestVersion = await getLatestDocumentVersionById({ id: documentId });
+    
+    if (!latestVersion || latestVersion.length === 0) {
+      console.log(`[DB Query - createDebouncedDocumentVersion] No previous version found for doc ${documentId}, skipping version creation`);
+      return null;
+    }
+    
+    const previousVersion = latestVersion[0];
+    
+    if (previousVersion.content === content) {
+      console.log(`[DB Query - createDebouncedDocumentVersion] Content unchanged for doc ${documentId}, skipping version creation`);
+      return null;
+    }
+    
+    const newVersion = await updateDocumentVersion({
+      documentId,
+      content,
+      previousContent: previousVersion.content
+    });
+    
+    console.log(`[DB Query - createDebouncedDocumentVersion] Created new version ${newVersion.version} for doc ${documentId}`);
+    return newVersion;
+    
+  } catch (error) {
+    console.error(`[DB Query - createDebouncedDocumentVersion] Error creating debounced version for doc ${documentId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Get all versions for a document (both Document and DocumentVersion tables)
+ * Returns a unified array of all versions for navigation
+ */
+export async function getAllDocumentVersions({
+  documentId,
+  userId
+}: {
+  documentId: string;
+  userId: string;
+}): Promise<Array<{
+  id: string;
+  content: string;
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+  version: number;
+  isCurrent: boolean;
+  diffContent?: string;
+}>> {
+  try {
+    const currentDocument = await getCurrentDocumentVersion({ userId, documentId });
+    
+    const historicalVersions = await db
+      .select()
+      .from(schema.DocumentVersion)
+      .where(eq(schema.DocumentVersion.documentId, documentId))
+      .orderBy(asc(schema.DocumentVersion.createdAt));
+    
+    const allVersions: Array<{
+      id: string;
+      content: string;
+      title: string;
+      createdAt: Date;
+      updatedAt: Date;
+      version: number;
+      isCurrent: boolean;
+      diffContent?: string;
+    }> = [];
+    
+    historicalVersions.forEach((version, index) => {
+      allVersions.push({
+        id: version.id,
+        content: version.content,
+        title: currentDocument?.title || 'Untitled Document', // Use current document title
+        createdAt: version.createdAt,
+        updatedAt: version.updatedAt,
+        version: version.version,
+        isCurrent: false,
+        diffContent: version.diffContent || undefined
+      });
+    });
+    
+    if (currentDocument) {
+      allVersions.push({
+        id: currentDocument.id,
+        content: currentDocument.content || '',
+        title: currentDocument.title,
+        createdAt: currentDocument.createdAt,
+        updatedAt: currentDocument.updatedAt,
+        version: historicalVersions.length + 1,
+        isCurrent: true,
+        diffContent: undefined
+      });
+    }
+    
+    console.log(`[DB Query - getAllDocumentVersions] Found ${allVersions.length} versions for doc ${documentId}`);
+    return allVersions;
+    
+  } catch (error) {
+    console.error(`[DB Query - getAllDocumentVersions] Error fetching all versions for doc ${documentId}:`, error);
+    return [];
+  }
+}
+export async function getLatestDocumentVersionById({ id }: { id: string }): Promise<(typeof schema.DocumentVersion.$inferSelect)[] | null> {
+  try {
+    const data = await db.select().from(schema.DocumentVersion).where(eq(schema.DocumentVersion.documentId, id)).orderBy(desc(schema.DocumentVersion.createdAt)).limit(1);
+    return data;
+  } catch (error) {
+    console.error(`[DB Query - getLatestDocumentVersionById] Error fetching latest document version for doc ${id}:`, error);
+    throw new Error(`Failed to fetch latest document version: ${error instanceof Error ? error.message : String(error)}`);
+
+  }
+}
+
 
 export async function getDocumentsById({ ids, userId }: { ids: string[], userId: string }): Promise<Document[]> {
   if (!ids || ids.length === 0) {

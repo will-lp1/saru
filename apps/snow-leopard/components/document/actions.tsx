@@ -8,6 +8,7 @@ import {
   CopyIcon,
 } from "../icons";
 import { useState } from "react";
+import { Document } from "@snow-leopard/db";
 
 interface DocumentActionsProps {
   content: string;
@@ -17,6 +18,7 @@ interface DocumentActionsProps {
   handleVersionChange: (type: "next" | "prev" | "toggle" | "latest") => void;
   currentVersionIndex: number;
   isCurrentVersion: boolean;
+  documents?: Document[];
 }
 
 export function DocumentActions({
@@ -27,6 +29,7 @@ export function DocumentActions({
   handleVersionChange,
   currentVersionIndex,
   isCurrentVersion,
+  documents,
 }: DocumentActionsProps) {
   const [previewActive, setPreviewActive] = useState(false);
 
@@ -56,13 +59,13 @@ export function DocumentActions({
     {
       icon: <UndoIcon size={16} />,
       label: "Previous version",
-      disabled: currentVersionIndex === 0,
+      disabled: !documents || currentVersionIndex <= 0,
       onClick: () => handleVersionChange("prev"),
     },
     {
       icon: <RedoIcon size={16} />,
       label: "Next version",
-      disabled: isCurrentVersion,
+      disabled: !documents || currentVersionIndex >= (documents.length - 1),
       onClick: () => handleVersionChange("next"),
     },
   ];
@@ -78,7 +81,7 @@ export function DocumentActions({
           <TooltipTrigger asChild>
             <Button
               variant="outline"
-              className="h-8 w-8 p-0"
+              className="size-8 p-0"
               disabled={disabled}
               onClick={onClick}
             >
@@ -93,7 +96,7 @@ export function DocumentActions({
         <TooltipTrigger asChild>
           <Button
             variant="outline"
-            className="h-8 w-8 p-0"
+            className="size-8 p-0"
             onClick={() => {
               navigator.clipboard.writeText(content);
               toast.success("Copied to clipboard!");

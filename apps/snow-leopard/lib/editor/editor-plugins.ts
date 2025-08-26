@@ -39,7 +39,7 @@ export function createEditorPlugins(opts: EditorPluginOptions): Plugin[] {
     savePlugin({
       saveFunction: opts.performSave,
       initialLastSaved: opts.initialLastSaved,
-      debounceMs: 200,
+      debounceMs: 200, // Quick save for current document updates
       documentId: opts.documentId,
     }),
     emojiPlugin(),

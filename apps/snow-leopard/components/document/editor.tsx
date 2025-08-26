@@ -11,6 +11,7 @@ import {
   setSaveStatus,
   createSaveFunction,
   createForceSaveHandler,
+  createDebouncedVersionHandler,
   type SaveState,
 } from "@/lib/editor/save-plugin";
 import { createEditorPlugins } from "@/lib/editor/editor-plugins";
@@ -76,6 +77,7 @@ function PureEditor({
   }, [documentId]);
 
   const performSave = useCallback(createSaveFunction(currentDocumentIdRef), []);
+  const debouncedVersionHandler = useCallback(createDebouncedVersionHandler(currentDocumentIdRef), []);
   const requestInlineSuggestionCallback = useCallback(
     createInlineSuggestionCallback(documentId),
     [documentId]
@@ -119,6 +121,12 @@ function PureEditor({
           const newSaveState = savePluginKey.getState(newState);
           if (onStatusChange && newSaveState && newSaveState !== oldSaveState) {
             onStatusChange(newSaveState);
+          }
+
+          // Handle debounced version creation when content changes
+          if (transaction.docChanged) {
+            const currentContent = buildContentFromDocument(newState.doc);
+            debouncedVersionHandler(currentContent);
           }
 
           if (

@@ -7,7 +7,18 @@ import { format, formatDistance, isToday, isYesterday, differenceInDays } from '
 import { toast } from 'sonner';
 
 import type { Document } from '@snow-leopard/db';
-import { getDocumentTimestampByIndex } from '@/lib/utils';
+
+type VersionData = {
+  id: string;
+  content: string;
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+  version: number;
+  isCurrent: boolean;
+  diffContent?: string;
+};
+import { versionCache } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 import { useDocument } from '@/hooks/use-document';
@@ -15,7 +26,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 interface VersionHeaderProps {
   handleVersionChange: (type: 'next' | 'prev' | 'toggle' | 'latest') => void;
-  documents: Array<Document> | undefined;
+  documents: Array<Document | VersionData> | undefined;
   currentVersionIndex: number;
 }
 
@@ -37,7 +48,8 @@ export const VersionHeader = ({
     setIsMutating(true);
     try {
       const versionToRestore = documents[currentVersionIndex];
-      const timestamp = getDocumentTimestampByIndex(documents, currentVersionIndex);
+      const content = versionToRestore.content;
+      const title = versionToRestore.title;
       
       const response = await fetch(`/api/document`, {
         method: 'POST',
@@ -46,9 +58,8 @@ export const VersionHeader = ({
         },
         body: JSON.stringify({
           id: document.documentId,
-          content: versionToRestore.content,
-          title: versionToRestore.title,
-          restoreFromTimestamp: timestamp
+          content: content,
+          title: title,
         }),
       });
       
@@ -60,17 +71,24 @@ export const VersionHeader = ({
       
       setDocument(current => ({
         ...current,
-        content: versionToRestore.content || '',
-        title: versionToRestore.title || current.title
+        content: content || '',
+        title: title || current.title
       }));
       
       handleVersionChange('latest');
       
+      try {
+        await versionCache.invalidateVersions(document.documentId);
+        console.log(`[Version] Invalidated cache after restore for ${document.documentId}`);
+      } catch (cacheError) {
+        console.warn(`[Version] Failed to invalidate cache:`, cacheError);
+      }
+      
       const event = new CustomEvent('version-restored', {
         detail: {
           documentId: document.documentId,
-          content: versionToRestore.content,
-          title: versionToRestore.title
+          content: content,
+          title: title
         }
       });
       window.dispatchEvent(event);
@@ -103,9 +121,12 @@ export const VersionHeader = ({
   const currentDoc = documents[currentVersionIndex];
   if (!currentDoc) return null; 
 
-  const dateString = formatVersionLabel(new Date(currentDoc.createdAt));
-  const timeString = formatVersionTime(new Date(currentDoc.createdAt));
-  const relativeTimeString = formatDistance(new Date(currentDoc.createdAt), new Date(), { addSuffix: true });
+  const createdAt = 'version' in currentDoc ? currentDoc.createdAt : currentDoc.createdAt;
+  const dateString = formatVersionLabel(new Date(createdAt));
+  const timeString = formatVersionTime(new Date(createdAt));
+  const relativeTimeString = formatDistance(new Date(createdAt), new Date(), { addSuffix: true });
+  
+  const versionNumber = 'version' in currentDoc ? currentDoc.version : currentVersionIndex + 1;
 
   return (
     <TooltipProvider>
@@ -116,7 +137,7 @@ export const VersionHeader = ({
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 text-sm text-primary/90 font-medium">
                 <span className="rounded-full bg-primary/10 size-5 flex items-center justify-center text-[10px] text-primary">
-                  {currentVersionIndex + 1}
+                  {versionNumber}
                 </span>
                 <span>
                   {dateString}

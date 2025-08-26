@@ -1,6 +1,7 @@
 import { Plugin, PluginKey, Transaction, EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { buildContentFromDocument } from './functions'; 
+import { buildContentFromDocument } from './functions';
+import { versionCache } from '@/lib/utils'; 
 
 export const savePluginKey = new PluginKey<SaveState>('save');
 
@@ -64,7 +65,7 @@ export function createSaveFunction(currentDocumentIdRef: React.MutableRefObject<
 
 export function savePlugin({
   saveFunction,
-  debounceMs = 1500,
+  debounceMs = 200, // Quick save for current document
   initialLastSaved = null,
   documentId,
 }: SavePluginOptions): Plugin<SaveState> {
@@ -246,5 +247,66 @@ export function createForceSaveHandler(currentDocumentIdRef: React.MutableRefObj
       console.error(`[Save Plugin] Force-save failed for ${currentEditorPropId}:`, error);
       throw error;
     }
+  };
+}
+
+/**
+ * Creates a debounced version creation function
+ * This will create a new version after 5 seconds of inactivity
+ */
+export function createDebouncedVersionHandler(currentDocumentIdRef: React.MutableRefObject<string>) {
+  let versionTimeout: NodeJS.Timeout | null = null;
+  let lastContent = '';
+
+  return async (content: string) => {
+    const currentEditorPropId = currentDocumentIdRef.current;
+    
+    if (isInvalidDocumentId(currentEditorPropId)) {
+      console.warn("[Debounced Version] Attempted to create version with invalid documentId:", currentEditorPropId);
+      return;
+    }
+
+    if (versionTimeout) {
+      clearTimeout(versionTimeout);
+    }
+
+    if (content === lastContent) {
+      return;
+    }
+
+    lastContent = content;
+
+    versionTimeout = setTimeout(async () => {
+      try {
+        console.log(`[Debounced Version] Creating new version for ${currentEditorPropId} after 5s inactivity`);
+        
+        const response = await fetch("/api/document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: currentEditorPropId,
+            content: content,
+            isDebouncedVersion: true,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log(`[Debounced Version] Successfully created new version for ${currentEditorPropId}`);
+        
+        try {
+          await versionCache.invalidateVersions(currentEditorPropId);
+          console.log(`[Debounced Version] Invalidated cache for ${currentEditorPropId}`);
+        } catch (cacheError) {
+          console.warn(`[Debounced Version] Failed to invalidate cache:`, cacheError);
+        }
+        
+      } catch (error) {
+        console.error(`[Debounced Version] Failed to create version for ${currentEditorPropId}:`, error);
+      }
+    }, 5000); // 5 seconds
   };
 } 
