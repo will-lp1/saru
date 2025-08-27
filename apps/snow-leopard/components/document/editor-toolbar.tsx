@@ -25,7 +25,8 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 
-import { wrapIn, lift } from 'prosemirror-commands';
+import { undo, redo } from 'prosemirror-history';
+import { UndoIcon, RedoIcon } from '@/components/icons';
 
 import {
   Tooltip,
@@ -181,6 +182,25 @@ export function EditorToolbar({ activeFormats }: EditorToolbarProps) {
       >
         <Italic className="size-5 text-foreground" />
       </ButtonWithTooltip>
+
+      <Separator orientation="vertical" className="mx-2 h-6" />
+
+      <ButtonWithTooltip
+        label="Undo"
+        formatKey=""
+        onClick={() => runCommand(undo)}
+      >
+        <UndoIcon size={16} />
+      </ButtonWithTooltip>
+      <ButtonWithTooltip
+        label="Redo"
+        formatKey=""
+        onClick={() => runCommand(redo)}
+      >
+        <RedoIcon size={16} />
+      </ButtonWithTooltip>
+
+      <Separator orientation="vertical" className="mx-2 h-6" />
 
       <div className="flex-1" />
       <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap pr-2">{wordCount} word{wordCount === 1 ? '' : 's'}</span>
