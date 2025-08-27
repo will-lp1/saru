@@ -20,6 +20,7 @@ export interface EditorPluginOptions {
   performSave: (content: string) => Promise<any>;
   requestInlineSuggestion: (state: any) => void;
   setActiveFormats: (formats: any) => void;
+  isCurrentVersion?: () => boolean;
 }
 
 export function createEditorPlugins(opts: EditorPluginOptions): Plugin[] {
@@ -39,9 +40,9 @@ export function createEditorPlugins(opts: EditorPluginOptions): Plugin[] {
     savePlugin({
       saveFunction: opts.performSave,
       initialLastSaved: opts.initialLastSaved,
-      debounceMs: 200, // Quick save for current document updates
+      debounceMs: 1000, 
       documentId: opts.documentId,
+      isCurrentVersion: opts.isCurrentVersion,
     }),
-    emojiPlugin(),
   ];
 } 

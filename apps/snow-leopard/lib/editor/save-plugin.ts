@@ -22,6 +22,7 @@ interface SavePluginOptions {
   debounceMs?: number;
   initialLastSaved?: Date | null;
   documentId: string; 
+  isCurrentVersion?: () => boolean;
 }
 
 export const INVALID_DOCUMENT_IDS = ["init", "undefined", "null"] as const;
@@ -45,6 +46,7 @@ export function createSaveFunction(currentDocumentIdRef: React.MutableRefObject<
         body: JSON.stringify({
           id: docId,
           content: contentToSave,
+          isDebouncedVersion: true,
         }),
       });
 
@@ -65,13 +67,35 @@ export function createSaveFunction(currentDocumentIdRef: React.MutableRefObject<
 
 export function savePlugin({
   saveFunction,
-  debounceMs = 200, // Quick save for current document
+  debounceMs = 1000, 
   initialLastSaved = null,
   documentId,
+  isCurrentVersion = () => true,
 }: SavePluginOptions): Plugin<SaveState> {
   let debounceTimeout: NodeJS.Timeout | null = null;
   let inflightRequest: Promise<any> | null = null;
   let editorViewInstance: EditorView | null = null;
+  let hasInitialized = false;
+  const flushPendingSave = () => {
+    if (!isCurrentVersion()) {
+      if (debounceTimeout) {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = null;
+      }
+      return;
+    }
+    
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout);
+      debounceTimeout = null;
+    }
+    if (editorViewInstance) {
+      const content = buildContentFromDocument(editorViewInstance.state.doc);
+      saveFunction(content)
+        .then(() => versionCache.invalidateVersions(documentId).catch(()=>{}))
+        .catch((e) => console.warn('[SavePlugin] Flush save failed', e));
+    }
+  };
 
   return new Plugin<SaveState>({
     key: savePluginKey,
@@ -88,6 +112,21 @@ export function savePlugin({
       },
       apply(tr, pluginState, oldState, newState): SaveState {
         const meta = tr.getMeta(savePluginKey);
+
+        if (!hasInitialized) {
+          hasInitialized = true;
+          return pluginState;
+        }
+        
+        if (tr.getMeta('external')) {
+          return pluginState;
+        }
+        
+        if (!isCurrentVersion()) {
+          console.log('[SavePlugin] Skipping all save logic - viewing non-current version');
+          return pluginState;
+        }
+        
         let shouldTriggerSave = false;
         if (meta) {
           if (meta.triggerSave === true) {
@@ -141,6 +180,13 @@ export function savePlugin({
               console.warn('[SavePlugin] Debounce fired, but editor view is not available.');
               return;
           }
+          
+          // Double-check we're still on current version when timeout fires
+          if (!isCurrentVersion()) {
+            console.log('[SavePlugin] Debounce fired but now viewing non-current version. Skipping save.');
+            return;
+          }
+          
           const view = editorViewInstance;
           const currentState = savePluginKey.getState(view.state);
           
@@ -161,9 +207,15 @@ export function savePlugin({
           const contentToSave = buildContentFromDocument(view.state.doc);
 
           inflightRequest = saveFunction(contentToSave)
-            .then(result => {
+            .then(async result => {
               inflightRequest = null;
               console.log('[SavePlugin] Save successful.');
+              try {
+                await versionCache.invalidateVersions(documentId);
+                console.log('[SavePlugin] Invalidated version cache after save');
+              } catch(err){
+                console.warn('[SavePlugin] Cache invalidation failed', err);
+              }
               setSaveStatus(view, { 
                   status: 'saved',
                   lastSaved: result?.updatedAt ? new Date(result.updatedAt) : new Date(),
@@ -193,12 +245,23 @@ export function savePlugin({
     view(editorView) {
        editorViewInstance = editorView;
        console.log(`[SavePlugin] View created for documentId: ${documentId}`);
+
+       const handleVisibility = () => {
+         if (document.hidden) flushPendingSave();
+       };
+       const handleBeforeUnload = () => flushPendingSave();
+
+       document.addEventListener('visibilitychange', handleVisibility);
+       window.addEventListener('beforeunload', handleBeforeUnload);
+
        return {
          destroy() {
            editorViewInstance = null;
            if (debounceTimeout) {
              clearTimeout(debounceTimeout);
            }
+           document.removeEventListener('visibilitychange', handleVisibility);
+           window.removeEventListener('beforeunload', handleBeforeUnload);
          }
        };
     }
@@ -228,6 +291,7 @@ export function createForceSaveHandler(currentDocumentIdRef: React.MutableRefObj
         body: JSON.stringify({
           id: currentEditorPropId,
           content: event.detail.content || "",
+          isDebouncedVersion: true,
         }),
       });
 

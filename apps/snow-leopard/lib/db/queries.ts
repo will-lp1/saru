@@ -474,11 +474,22 @@ export async function deleteDocumentsByIdAfterTimestamp({
     if (isNaN(timestampDate.getTime())) { 
         throw new Error("Invalid timestamp provided for deletion.");
     }
+    
+    // Delete DocumentVersion entries after timestamp
+    await db.delete(schema.DocumentVersion)
+      .where(and(
+        eq(schema.DocumentVersion.documentId, id),
+        gt(schema.DocumentVersion.createdAt, timestampDate) 
+      ));
+    
+    // Delete Document entries after timestamp  
     await db.delete(schema.Document)
       .where(and(
         eq(schema.Document.id, id),
         gt(schema.Document.createdAt, timestampDate) 
       ));
+      
+    console.log(`[DB Query] Deleted all versions after ${timestampDate.toISOString()} for document ${id}`);
   } catch (error) {
     console.error('Error deleting documents:', error);
     throw error;
@@ -1144,4 +1155,86 @@ export async function unpublishAllDocumentsByUserId({ userId }: { userId: string
     console.error(`[DB Query - unpublishAllDocumentsByUserId] Error un-publishing documents for user ${userId}:`, error);
     throw new Error('Failed to un-publish documents.');
   }
+}
+
+/**
+ * Fork a document with version history up to a specific timestamp
+ * Creates a new document with all historical versions up to the fork point
+ */
+export async function forkDocumentWithHistory({
+  originalDocumentId,
+  forkFromTimestamp,
+  newDocumentId,
+  newTitle,
+  userId,
+  chatId = null
+}: {
+  originalDocumentId: string;
+  forkFromTimestamp: string;
+  newDocumentId: string;
+  newTitle: string;
+  userId: string;
+  chatId?: string | null;
+}): Promise<(typeof schema.Document.$inferSelect)> {
+  return await db.transaction(async (tx) => {
+    // Get all versions of the original document up to the fork point
+    const allVersions = await getAllDocumentVersions({ 
+      documentId: originalDocumentId, 
+      userId 
+    });
+    
+    const forkTime = new Date(forkFromTimestamp).getTime();
+    const versionsUpToFork = allVersions.filter(v => {
+      const versionTime = new Date(v.createdAt).getTime();
+      return versionTime <= forkTime;
+    });
+    
+    if (versionsUpToFork.length === 0) {
+      throw new Error('No versions found up to fork point');
+    }
+    
+    // Sort by creation time to maintain order
+    versionsUpToFork.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    
+    // Create the new forked document (will be the "current" version)
+    const latestVersionAtFork = versionsUpToFork[versionsUpToFork.length - 1];
+    const now = new Date();
+    
+    const forkedDocument = await tx
+      .insert(schema.Document)
+      .values({
+        id: newDocumentId,
+        title: newTitle,
+        content: latestVersionAtFork.content,
+        userId,
+        chatId,
+        is_current: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    
+    // Create DocumentVersion entries for all historical versions up to fork point
+    for (let i = 0; i < versionsUpToFork.length; i++) {
+      const version = versionsUpToFork[i];
+      const previousVersionId = i > 0 ? versionsUpToFork[i - 1].id : null;
+      
+      await tx.insert(schema.DocumentVersion).values({
+        documentId: newDocumentId,
+        content: version.content,
+        version: i + 1,
+        previousVersionId,
+        createdAt: new Date(version.createdAt),
+        updatedAt: new Date(version.updatedAt),
+      });
+    }
+    
+    console.log(`[DB Query - forkDocumentWithHistory] Created fork ${newDocumentId} with ${versionsUpToFork.length} historical versions`);
+    
+    if (!forkedDocument || forkedDocument.length === 0) {
+      throw new Error('Failed to create forked document');
+    }
+    
+    return forkedDocument[0];
+  });
 }

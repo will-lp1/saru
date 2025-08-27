@@ -23,6 +23,7 @@ export function diffPlugin(documentId: string): Plugin {
 
         if (!previewActiveRef) {
           previewOriginalContentRef = buildContentFromDocument(editorView.state.doc);
+          editorView.dom.setAttribute('contenteditable', 'false');
         }
 
         const oldContent = previewOriginalContentRef ?? buildContentFromDocument(editorView.state.doc);
@@ -51,12 +52,16 @@ export function diffPlugin(documentId: string): Plugin {
         if (!previewActiveRef || previewOriginalContentRef === null) return;
 
         const originalDocNode = buildDocumentFromContent(previewOriginalContentRef);
-        const tr = editorView.state.tr.replaceWith(0, editorView.state.doc.content.size, originalDocNode.content);
+        const tr = editorView.state.tr
+          .replaceWith(0, editorView.state.doc.content.size, originalDocNode.content)
+          .setMeta('external', true)
+          .setMeta('addToHistory', false);
         editorView.dispatch(tr);
 
         previewActiveRef = false;
         previewOriginalContentRef = null;
         lastPreviewContentRef = null;
+        editorView.dom.setAttribute('contenteditable', 'true');
       };
 
       const handleApply = (event: CustomEvent) => {
@@ -101,6 +106,7 @@ export function diffPlugin(documentId: string): Plugin {
 
         editorView.dom.classList.add('applying-changes');
         setTimeout(finalizeApply, animationDuration);
+        editorView.dom.setAttribute('contenteditable', 'true');
       };
 
       window.addEventListener('preview-document-update', handlePreviewUpdate as EventListener);

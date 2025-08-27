@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from "@/lib/auth";
 import { headers } from 'next/headers'; 
-import { differenceInMinutes } from 'date-fns';
 import {
-  getCurrentDocumentVersion,
   updateCurrentDocumentVersion,
-  createNewDocumentVersion,
-  getChatExists,
   getLatestDocumentById, // To return the final state
-  createDebouncedDocumentVersion
+  createDebouncedDocumentVersion,
 } from '@/lib/db/queries';
 import { Document } from '@snow-leopard/db';
 

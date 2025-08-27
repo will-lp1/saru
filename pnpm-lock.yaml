@@ -166,6 +166,9 @@ importers:
       '@types/diff':
         specifier: ^7.0.1
         version: 7.0.2
+      '@types/diff-match-patch':
+        specifier: ^1.0.36
+        version: 1.0.36
       '@types/lodash.debounce':
         specifier: ^4.0.9
         version: 4.0.9

@@ -76,6 +76,14 @@ function PureEditor({
     currentDocumentIdRef.current = documentId;
   }, [documentId]);
 
+  const isCurrentVersionRef = useRef(isCurrentVersion);
+  useEffect(() => {
+    isCurrentVersionRef.current = isCurrentVersion;
+    if (editorRef.current) {
+      editorRef.current.setProps({ editable: () => isCurrentVersion });
+    }
+  }, [isCurrentVersion]);
+
   const performSave = useCallback(createSaveFunction(currentDocumentIdRef), []);
   const debouncedVersionHandler = useCallback(createDebouncedVersionHandler(currentDocumentIdRef), []);
   const requestInlineSuggestionCallback = useCallback(
@@ -93,6 +101,7 @@ function PureEditor({
         requestInlineSuggestion: (state) =>
           requestInlineSuggestionCallback(state, abortControllerRef, editorRef),
         setActiveFormats,
+        isCurrentVersion: () => isCurrentVersionRef.current,
       });
 
       const initialEditorState = EditorState.create({
@@ -123,8 +132,8 @@ function PureEditor({
             onStatusChange(newSaveState);
           }
 
-          // Handle debounced version creation when content changes
-          if (transaction.docChanged) {
+          // Handle debounced version creation when content changes (only for current version)
+          if (transaction.docChanged && isCurrentVersion) {
             const currentContent = buildContentFromDocument(newState.doc);
             debouncedVersionHandler(currentContent);
           }
@@ -162,6 +171,7 @@ function PureEditor({
           requestInlineSuggestion: (state) =>
             requestInlineSuggestionCallback(state, abortControllerRef, editorRef),
           setActiveFormats,
+          isCurrentVersion: () => isCurrentVersionRef.current,
         });
 
         const newDoc = buildDocumentFromContent(content);
@@ -217,6 +227,15 @@ function PureEditor({
     onCreateDocumentRequest,
     requestInlineSuggestionCallback,
   ]);
+  
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.dom.setAttribute(
+        "contenteditable",
+        isCurrentVersion ? "true" : "false"
+      );
+    }
+  }, [isCurrentVersion]);
 
   useEffect(() => {
     const handleCreationStreamFinished = (event: CustomEvent) => {

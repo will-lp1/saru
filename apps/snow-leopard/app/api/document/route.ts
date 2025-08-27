@@ -4,8 +4,8 @@ import { updateDocument } from './actions/update';
 import { deleteDocument } from './actions/delete';
 import { getDocuments } from './actions/get';
 import { renameDocument } from './actions/rename';
+import { forkDocument } from './actions/fork';
 
-// All document related actions are handled here
 export async function GET(request: NextRequest) {
   return getDocuments(request);
 }
@@ -17,13 +17,26 @@ export async function PUT(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  
-  if (body.id && body.title && 
-      !body.content && !body.kind && !body.chatId) {
-    console.log('[Document API] Detected rename operation');
+  const recognisedAction = (body.action ?? '').toLowerCase();
+
+  if (recognisedAction === 'fork') {
+    return forkDocument(request, body);
+  }
+  if (recognisedAction === 'rename') {
     return renameDocument(request, body);
   }
-  
+  if (recognisedAction === 'update') {
+    return updateDocument(request, body);
+  }
+
+  if (body.originalDocumentId && (body.versionIndex !== undefined || body.forkFromTimestamp)) {
+    return forkDocument(request, body);
+  }
+
+  if (body.id && typeof body.title === 'string' && !('content' in body)) {
+    return renameDocument(request, body);
+  }
+
   return updateDocument(request, body);
 }
 
