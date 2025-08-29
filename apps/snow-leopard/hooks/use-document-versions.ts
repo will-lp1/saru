@@ -13,7 +13,7 @@ export function useDocumentVersions(documentId: string | null, userId?: string |
 
   const fetcher = async () => {
     if (!documentId) return [] as Document[];
-    const res = await fetch(`/api/document?id=${documentId}&includeVersions=true`);
+    const res = await fetch(`/api/document?id=${encodeURIComponent(documentId)}&includeVersions=true`);
     if (!res.ok) throw new Error('Failed to fetch versions');
     const data = await res.json();
     if (userId) {
@@ -38,9 +38,9 @@ export function useDocumentVersions(documentId: string | null, userId?: string |
     refreshInterval: 10000,
     suspense: false,
     fallbackData: undefined,
+    keepPreviousData: true,
   });
 
-  // If we have no data yet but cache exists, set it
   if (!swr.data && documentId && userId) {
     fallbackData().then((cached) => {
       if (cached) swr.mutate(cached, false);

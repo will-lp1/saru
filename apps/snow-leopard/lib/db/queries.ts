@@ -420,6 +420,7 @@ export async function getDocumentsById({ ids, userId }: { ids: string[], userId:
       .from(schema.Document)
       .where(and(
         eq(schema.Document.userId, userId),
+        eq(schema.Document.is_current, true),
         inArray(schema.Document.id, ids)
       ))
       .orderBy(asc(schema.Document.createdAt));
@@ -753,28 +754,6 @@ export async function deleteDocumentByIdAndUserId({
   }
 }
 
-export async function setOlderVersionsNotCurrent({ 
-  userId, 
-  documentId 
-}: { 
-  userId: string; 
-  documentId: string 
-}): Promise<void> {
-  try {
-    await db
-      .update(schema.Document)
-      .set({ is_current: false })
-      .where(and(
-        eq(schema.Document.id, documentId),
-        eq(schema.Document.userId, userId)
-      ));
-    console.log(`[DB Query - setOlderVersionsNotCurrent] Marked older versions of doc ${documentId} for user ${userId} as not current.`);
-  } catch (error) {
-    console.error(`[DB Query - setOlderVersionsNotCurrent] Error marking older versions for doc ${documentId}, user ${userId}:`, error);
-    throw new Error(`Failed to mark older document versions as not current: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
 export async function renameDocumentTitle({ 
   userId, 
   documentId, 
@@ -898,117 +877,6 @@ export async function getChatExists({ chatId }: { chatId: string }): Promise<boo
   } catch (error) {
     console.error(`[DB Query - getChatExists] Error checking chat ${chatId}:`, error);
     return false; 
-  }
-}
-
-export async function createNewDocumentVersion({
-  id,
-  title,
-  kind = null,
-  content,
-  userId,
-  chatId,
-}: {
-  id: string;
-  title: string;
-  kind?: string | null;
-  content: string;
-  userId: string;
-  chatId?: string | null;
-}): Promise<(typeof schema.Document.$inferSelect)> {
-   try {
-    // Wrap operations in a transaction
-    const newDocument = await db.transaction(async (tx) => {
-      // 1. Set older versions to not current using the transaction client (tx)
-      await tx
-        .update(schema.Document)
-        .set({ is_current: false })
-        .where(and(
-          eq(schema.Document.id, id),
-          eq(schema.Document.userId, userId)
-        ));
-      console.log(`[DB Query - TX] Marked older versions of doc ${id} for user ${userId} as not current.`);
-
-      // 2. Prepare and insert the new version using the transaction client (tx)
-      const now = new Date();
-      const newVersionData = {
-        id,
-        title,
-        ...(kind ? { kind: kind as any } : {}),
-        content,
-        userId,
-        chatId: chatId || null,
-        is_current: true,
-        createdAt: now,
-        updatedAt: now,
-      };
-      const inserted = await tx
-        .insert(schema.Document)
-        .values(newVersionData)
-        .returning();
-
-      console.log(`[DB Query - TX] Saved new version for doc ${id}, user ${userId}`);
-      if (!inserted || inserted.length === 0) {
-          throw new Error("Failed to insert new document version or retrieve the inserted data within transaction.");
-      }
-      
-      // Return the newly inserted document from the transaction
-      return inserted[0];
-    });
-    
-    console.log(`[DB Query - createNewDocumentVersion] Successfully created new version for doc ${id}, user ${userId} (Transaction committed)`);
-    return newDocument;
-    
-  } catch (error) {
-    console.error(`[DB Query - createNewDocumentVersion] Error creating new version for doc ${id}, user ${userId}:`, error);
-    // Log if it's a transaction rollback? Drizzle might do this automatically.
-    throw new Error(`Failed to create new document version: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-/**
- * Get the most recent version of a document by its ID, regardless of is_current status.
- * Useful for fetching the very latest record after an update or creation.
- */
-export async function getLatestDocumentById({ id }: { id: string }): Promise<(typeof schema.Document.$inferSelect) | null> {
-  try {
-    // Validate document ID
-    if (!id || id === 'undefined' || id === 'null' || id === 'init') {
-      console.warn(`[DB Query - getLatestDocumentById] Invalid document ID provided: ${id}`);
-      throw new Error(`Invalid document ID: ${id}`);
-    }
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id)) {
-      console.warn(`[DB Query - getLatestDocumentById] Document ID is not a valid UUID format: ${id}`);
-      throw new Error(`Invalid document ID format: ${id}`);
-    }
-    
-    // Fetch the latest version based on creation time using Drizzle
-    const data = await db
-      .select()
-      .from(schema.Document)
-      .where(eq(schema.Document.id, id)) 
-      .orderBy(desc(schema.Document.createdAt))
-      .limit(1);
-
-    if (!data || data.length === 0) {
-      // This is okay, might be a new document being created
-      console.log(`[DB Query - getLatestDocumentById] No document found with ID: ${id}`);
-      return null; 
-    }
-    
-    return data[0]; // Return the latest document found
-
-  } catch (error) {
-    console.error(`[DB Query - getLatestDocumentById] Error fetching document with ID ${id}:`, error);
-    // Rethrow validation/DB errors specifically
-    if (error instanceof Error && (error.message.includes('Invalid document ID') || error.message.includes('format'))) {
-       throw error; 
-    }
-    // For other errors (like DB connection issues), maybe throw a generic error or return null depending on desired behavior
-    // Returning null to align with maybeSingle() behavior in case of non-validation errors
-    console.error('[DB Query - getLatestDocumentById] Non-validation error encountered, returning null.');
-    return null; 
   }
 }
 

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from "@/lib/auth";
 import { headers } from 'next/headers';
 import { generateUUID } from '@/lib/utils';
-import { getAllDocumentVersions, saveDocument } from '@/lib/db/queries';
+import { getAllDocumentVersions } from '@/lib/db/queries';
+import { db } from '@snow-leopard/db';
+import * as schema from '@snow-leopard/db';
 
 interface ForkBody {
   originalDocumentId: string;
@@ -51,18 +53,43 @@ export async function forkDocument(request: NextRequest, body: any): Promise<Nex
     }
     
     const newDocumentId = generateUUID();
-    const forkedDocument = await saveDocument({
-      id: newDocumentId,
-      title: newTitle || `${targetVersion.title} (Fork)`,
-      content: targetVersion.content,
-      userId: session.user.id,
-      chatId: null
+
+    const forkTime = new Date(
+      typeof forkFromTimestamp === 'string' ? forkFromTimestamp : targetVersion.createdAt
+    ).getTime();
+
+    const versionsUpToFork = allVersions.filter(v => new Date(v.createdAt).getTime() <= forkTime);
+
+    const forkedDoc = await db.transaction(async (tx) => {
+      const now = new Date();
+
+      const [doc] = await tx.insert(schema.Document).values({
+        id: newDocumentId,
+        title: newTitle || `${targetVersion.title} (Fork)`,
+        content: targetVersion.content,
+        userId: session.user.id,
+        chatId: null,
+        is_current: true,
+        createdAt: now,
+        updatedAt: now,
+      }).returning();
+
+      for (let i = 0; i < versionsUpToFork.length; i++) {
+        const v = versionsUpToFork[i];
+        await tx.insert(schema.DocumentVersion).values({
+          documentId: newDocumentId,
+          content: v.content,
+          version: i + 1,
+          previousVersionId: null,
+          createdAt: new Date(v.createdAt),
+          updatedAt: new Date(v.updatedAt),
+        });
+      }
+
+      return doc;
     });
-    
-    return NextResponse.json({ 
-      forkedDocument,
-      newDocumentId
-    });
+
+    return NextResponse.json({ forkedDocument: forkedDoc, newDocumentId });
     
   } catch (error: any) {
     return NextResponse.json({ 

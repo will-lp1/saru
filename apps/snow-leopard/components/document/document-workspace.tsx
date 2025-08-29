@@ -65,56 +65,23 @@ export function AlwaysVisibleArtifact({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'edit' | 'diff'>('edit');
 
-  const { versions: swrVersions, mutate: mutateVersions } = useDocumentVersions(initialDocumentId, user?.id);
+  const { versions: swrVersions, isLoading: versionsLoading, mutate: mutateVersions } = useDocumentVersions(initialDocumentId, user?.id);
   const [documents, setDocuments] = useState<Document[]>(swrVersions);
-
-  useEffect(() => {
-    setDocuments(swrVersions);
-  }, [swrVersions]);
 
   const [currentVersionIndex, setCurrentVersionIndex] = useState<number>(swrVersions.length > 0 ? swrVersions.length - 1 : -1);
 
   useEffect(() => {
-    setCurrentVersionIndex(swrVersions.length > 0 ? swrVersions.length - 1 : -1);
-  }, [swrVersions.length]);
+    if (!swrVersions.length) return;
 
-  useEffect(() => {
-    if (initialDocumentId && initialDocumentId !== 'init') {
-      const fetchAllVersions = async () => {
-        try {
-          // Try to get cached versions first
-          const userId = user?.id;
-          if (userId) {
-            const cachedVersions = await versionCache.getVersions(initialDocumentId, userId);
-            if (cachedVersions) {
-              console.log('[DocumentWorkspace] Using cached versions for', initialDocumentId);
-              setDocuments(cachedVersions);
-              setCurrentVersionIndex(cachedVersions.length > 0 ? cachedVersions.length - 1 : -1);
-              return;
-            }
-          }
-          
-          // Fetch from API if not cached
-          console.log('[DocumentWorkspace] Fetching versions from API for', initialDocumentId);
-          const response = await fetch(`/api/document?id=${initialDocumentId}&includeVersions=true`);
-          if (response.ok) {
-            const allVersions = await response.json();
-            setDocuments(allVersions);
-            setCurrentVersionIndex(allVersions.length > 0 ? allVersions.length - 1 : -1);
-            
-            // Cache the versions
-            if (userId) {
-              await versionCache.setVersions(initialDocumentId, allVersions, userId);
-            }
-          }
-        } catch (error) {
-          console.error('[DocumentWorkspace] Error fetching all versions:', error);
-        }
-      };
-      
-      fetchAllVersions();
+    const wasAtLatest = currentVersionIndex === -1 || currentVersionIndex === documents.length - 1;
+
+    setDocuments(swrVersions);
+
+    if (wasAtLatest || currentVersionIndex >= swrVersions.length) {
+      setCurrentVersionIndex(swrVersions.length - 1);
     }
-  }, [initialDocumentId, user?.id]);
+  }, [swrVersions]);
+
 
   const renameDocument = async (newTitle: string) => {
     if (isRenamingDocument || !document.documentId || document.documentId === 'init') return;
@@ -228,6 +195,7 @@ export function AlwaysVisibleArtifact({
     }
   };
 
+
   const currentDocument = useMemo(() => {
     if (currentVersionIndex >= 0 && currentVersionIndex < documents.length) {
       return documents[currentVersionIndex];
@@ -307,8 +275,10 @@ export function AlwaysVisibleArtifact({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            action: 'fork',
             originalDocumentId,
             forkFromTimestamp,
+            versionIndex,
             newTitle: forkTitle,
           }),
         });
@@ -600,12 +570,13 @@ export function AlwaysVisibleArtifact({
       </div>
       
       <div className="bg-background text-foreground dark:bg-black dark:text-white h-full overflow-y-auto !max-w-full items-center relative">
-        {documents && documents.length > 1 && (
+        {(documents.length > 0 || versionsLoading) && (
           <VersionRail
             versions={documents}
             currentIndex={currentVersionIndex}
             onIndexChange={handleVersionChangeByIndex}
             baseDocumentId={editorDocumentId}
+            isLoading={versionsLoading}
           />
         )}
 

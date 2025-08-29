@@ -3,8 +3,6 @@ import { auth } from "@/lib/auth"; // Import Better Auth
 import { headers } from 'next/headers'; // Import headers
 import { 
   saveDocument, 
-  checkDocumentOwnership, 
-  setOlderVersionsNotCurrent, 
   getDocumentById 
 } from '@/lib/db/queries';
 import { generateUUID } from '@/lib/utils';
@@ -47,21 +45,8 @@ export async function createDocument(request: NextRequest, body: any) {
       }, { status: 400 });
     }
 
-    console.log(`[Document API - CREATE] User ${userId} creating/updating document: ${documentId}`);
+    console.log(`[Document API - CREATE] User ${userId} creating document: ${documentId}`);
 
-    // --- Versioning Logic --- 
-    // Check if any version of this document already exists for the user
-    const ownsExistingVersion = await checkDocumentOwnership({ userId, documentId });
-
-    if (ownsExistingVersion) {
-      console.log(`[Document API - CREATE] Document ${documentId} exists for user ${userId}. Setting older versions to not current.`);
-      await setOlderVersionsNotCurrent({ userId, documentId }); 
-    } else {
-       console.log(`[Document API - CREATE] Document ${documentId} is new for user ${userId}.`);
-    }
-    
-    // --- Save New Document Version --- 
-    // is_current defaults to true in saveDocument
     await saveDocument({
       id: documentId,
       title: title,

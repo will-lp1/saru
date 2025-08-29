@@ -16,9 +16,17 @@ interface VersionRailProps {
   currentIndex: number;
   onIndexChange: (index: number) => void;
   baseDocumentId: string;
+  /** When true, the history request is still in flight – render a skeleton */
+  isLoading?: boolean;
 }
 
-export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumentId }: VersionRailProps){
+export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumentId, isLoading }: VersionRailProps){
+  if (isLoading || versions.length <= 1) {
+    return (
+      <div className="w-full border-b bg-background h-1 group-hover:h-12 transition-all duration-200" />
+    );
+  }
+
   const [hoverIndex, setHoverIndex] = React.useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = React.useState<number | null>(null);
   const [pressStart, setPressStart] = React.useState<number | null>(null);
@@ -99,7 +107,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
         detail: { 
           originalDocumentId: baseDocumentId,
           versionIndex: idx,
-          forkFromTimestamp: version.createdAt
+          forkFromTimestamp: version.createdAt,
         },
       })
     );
@@ -110,7 +118,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const fraction = x / rect.width;
-    const idx = Math.round(fraction * (versions.length - 1));
+    const idx = Math.min(Math.max(Math.round(fraction * (versions.length - 1)), 0), versions.length - 1);
     
     if (now - lastClickTime < 300) {
       triggerFork(idx);
@@ -125,7 +133,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
     if (!versions.length) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const idx = Math.round((x / rect.width) * (versions.length - 1));
+    const idx = Math.min(Math.max(Math.round((x / rect.width) * (versions.length - 1)), 0), versions.length - 1);
     if (idx < 0 || idx >= versions.length) return;
     if (idx === hoverIndex) return;
 
@@ -142,7 +150,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const fraction = x / rect.width;
-    const idx = Math.round(fraction * (versions.length - 1));
+    const idx = Math.min(Math.max(Math.round(fraction * (versions.length - 1)), 0), versions.length - 1);
     
     setPressStart(Date.now());
     
@@ -189,7 +197,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
   
   const isViewingHistory = selectedIndex !== null && selectedIndex < versions.length - 1;
 
-  const Tooltip = ({ active,payload}:any)=>{
+  const Tooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: { ts: string; additions: number; deletions: number } }> }) => {
     if(active&&payload&&payload.length){
       const d=payload[0].payload;
       return (
@@ -231,7 +239,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
       )}
       
       <div
-        className={`w-full border-b bg-background transition-all duration-200 group ${isViewingHistory ? 'h-12' : 'hover:h-12 focus-within:h-12 h-1'}`}
+        className={`w-full border-b bg-background transition-all duration-200 group ${isViewingHistory ? 'h-12' : 'hover:h-12 h-1'}`}
         onPointerLeave={handlePointerLeave}
         onPointerMove={handlePointerMove}
         onPointerDown={handlePointerDown}

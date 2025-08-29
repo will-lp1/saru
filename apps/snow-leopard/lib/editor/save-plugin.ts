@@ -72,7 +72,7 @@ export function savePlugin({
   documentId,
   isCurrentVersion = () => true,
 }: SavePluginOptions): Plugin<SaveState> {
-  let debounceTimeout: NodeJS.Timeout | null = null;
+  let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
   let inflightRequest: Promise<any> | null = null;
   let editorViewInstance: EditorView | null = null;
   let hasInitialized = false;
@@ -322,7 +322,7 @@ export function createForceSaveHandler(currentDocumentIdRef: React.MutableRefObj
  * This will create a new version after 5 seconds of inactivity
  */
 export function createDebouncedVersionHandler(currentDocumentIdRef: React.MutableRefObject<string>) {
-  let versionTimeout: NodeJS.Timeout | null = null;
+  let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
   let lastContent = '';
 
   return async (content: string) => {
@@ -333,8 +333,8 @@ export function createDebouncedVersionHandler(currentDocumentIdRef: React.Mutabl
       return;
     }
 
-    if (versionTimeout) {
-      clearTimeout(versionTimeout);
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout);
     }
 
     if (content === lastContent) {
@@ -343,7 +343,7 @@ export function createDebouncedVersionHandler(currentDocumentIdRef: React.Mutabl
 
     lastContent = content;
 
-    versionTimeout = setTimeout(async () => {
+    debounceTimeout = setTimeout(async () => {
       try {
         console.log(`[Debounced Version] Creating new version for ${currentEditorPropId} after 5s inactivity`);
         

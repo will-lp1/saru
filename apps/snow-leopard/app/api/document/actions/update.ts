@@ -3,15 +3,14 @@ import { auth } from "@/lib/auth";
 import { headers } from 'next/headers'; 
 import {
   updateCurrentDocumentVersion,
-  getLatestDocumentById, // To return the final state
   createDebouncedDocumentVersion,
 } from '@/lib/db/queries';
-import { Document } from '@snow-leopard/db';
 
 /**
  * Handles document update operations (POST)
- * Updates the latest version if within threshold and metadata matches,
- * otherwise creates a new version.
+ * Always updates the current document version. If `isDebouncedVersion` is true
+ * it ALSO triggers creation of a debounced historical version. The debounced
+ * version write is executed in parallel to reduce request latency.
  */
 export async function updateDocument(request: NextRequest, body: any): Promise<NextResponse> {
   try {
@@ -57,51 +56,41 @@ export async function updateDocument(request: NextRequest, body: any): Promise<N
     }
 
     // --- Versioning Logic --- 
-    let updatedOrCreatedDocument: typeof Document.$inferSelect | null = null;
+    // Single write path: update current document
 
     try {
-      // Always update the current document first (this is the main content)
       console.log(`[Document API - UPDATE] Always updating current document for ${documentId}`);
-      updatedOrCreatedDocument = await updateCurrentDocumentVersion({
+      const isDebouncedVersion = body.isDebouncedVersion === true;
+
+      const updatePromise = updateCurrentDocumentVersion({
         userId,
         documentId,
         content,
       });
-      
-      if (!updatedOrCreatedDocument) {
-        throw new Error('updateCurrentDocumentVersion returned null unexpectedly.');
-      }
-      
-      const isDebouncedVersion = body.isDebouncedVersion === true;
-      
-      if (isDebouncedVersion) {
-        console.log(`[Document API - UPDATE] Creating debounced version for ${documentId}`);
-        const newVersion = await createDebouncedDocumentVersion({
-          documentId,
-          content,
-          userId
-        });
-        
-        if (newVersion) {
-          console.log(`[Document API - UPDATE] Successfully created debounced version ${newVersion.version} for ${documentId}`);
-        }
-      }
 
-      const finalDocumentState = updatedOrCreatedDocument;
-      
-      if (!finalDocumentState) {
-          console.error(`[Document API - UPDATE] Failed to retrieve document ${documentId} after operation.`);
-          const fallbackState = await getLatestDocumentById({ id: documentId });
-           if (fallbackState) {
-               console.warn('[Document API - UPDATE] Returning fallback state after initial retrieval failed.')
-               return NextResponse.json(fallbackState);
-           } else {
-                return NextResponse.json({ error: 'Failed to retrieve updated document data after operation and fallback.'}, { status: 500 });
-           }
-      }
+      const debouncedPromise = !isDebouncedVersion
+        ? Promise.resolve(null)
+        : createDebouncedDocumentVersion({ documentId, content, userId })
+            .then((v) => {
+              if (v) {
+                console.log(
+                  `[Document API - UPDATE] Successfully created debounced version ${v.version} for ${documentId}`
+                );
+              }
+              return v;
+            })
+            .catch((err) => {
+              console.error(
+                `[Document API - UPDATE] Debounced version creation failed for ${documentId}:`,
+                err
+              );
+              return null;
+            });
+
+      const [updatedDocument] = await Promise.all([updatePromise, debouncedPromise]);
 
       console.log(`[Document API - UPDATE] Document ${documentId} processed successfully.`);
-      return NextResponse.json(finalDocumentState); 
+      return NextResponse.json(updatedDocument); 
 
     } catch (dbError: any) {
       console.error(`[Document API - UPDATE] Database operation error for doc ${documentId}:`, dbError);
