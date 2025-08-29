@@ -42,7 +42,6 @@ export function createEditorPlugins(opts: EditorPluginOptions): Plugin[] {
       initialLastSaved: opts.initialLastSaved,
       debounceMs: 5000, 
       documentId: opts.documentId,
-      isCurrentVersion: opts.isCurrentVersion,
     }),
   ];
 } 

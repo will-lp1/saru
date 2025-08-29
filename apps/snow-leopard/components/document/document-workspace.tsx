@@ -304,16 +304,10 @@ export function AlwaysVisibleArtifact({
     window.addEventListener('document-renamed', handleDocumentRenamed as unknown as EventListener);
     window.addEventListener('version-fork', handleVersionFork as unknown as EventListener);
     
-    const handleDocumentUpdated = () => {
-      mutateVersions();
-    };
 
-    window.addEventListener('document-updated', handleDocumentUpdated as unknown as EventListener);
-    
     return () => {
       window.removeEventListener('document-renamed', handleDocumentRenamed as unknown as EventListener);
       window.removeEventListener('version-fork', handleVersionFork as unknown as EventListener);
-      window.removeEventListener('document-updated', handleDocumentUpdated as unknown as EventListener);
     };
   }, [newTitle, editingTitle, setDocuments, document.documentId, user?.id, mutateVersions]);
 
