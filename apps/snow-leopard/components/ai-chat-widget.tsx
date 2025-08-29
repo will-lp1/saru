@@ -43,6 +43,11 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
     setLoading(false);
   };
 
+  const handleCloseChat = () => {
+    abortControllerRef.current?.abort();
+    setOpen(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
@@ -186,6 +191,12 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
     }
   }, [messages, open]);
 
+  useEffect(() => {
+    if (open && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [open]);
+
   return (
     <>
       <AnimatePresence>
@@ -215,7 +226,7 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 z-40"
-              onClick={() => setOpen(false)}
+              onClick={handleCloseChat}
             />
             <motion.div
               initial={{ opacity: 0, y: 50, scale: 0.95 }}
@@ -241,7 +252,7 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
                     variant="ghost"
                     size="icon"
                     className="size-8 shrink-0"
-                    onClick={() => setOpen(false)}
+                    onClick={handleCloseChat}
                     title="Close Chat"
                   >
                     <X className="size-4" />
@@ -258,18 +269,6 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
                     >
                       <div className="w-full max-w-2xl mx-auto text-center">
                         <div className="mb-6">
-                          <motion.div 
-                            initial={{ scale: 0.8 }}
-                            animate={{ scale: 1 }}
-                            transition={{ delay: 0.2, duration: 0.3 }}
-                            className="size-12 flex items-center justify-center rounded-full ring-1 ring-border bg-background overflow-hidden relative mx-auto mb-4"
-                          >
-                            <img
-                              src="/images/leopardprintbw.svg"
-                              alt="Snow Leopard"
-                              className="object-cover dark:invert"
-                            />
-                          </motion.div>
                           <motion.h3 
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -283,8 +282,10 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: 0.5, duration: 0.3 }}
-                          className="flex flex-wrap gap-2 justify-center"
+                          className="flex flex-col items-center gap-3"
                         >
+                          <p className="text-sm text-muted-foreground">Try asking:</p>
+                          <div className="flex flex-wrap gap-2 justify-center max-w-full">
                           {SAMPLE_PROMPT.map((prompt, index) => (
                             <motion.div
                               key={prompt}
@@ -295,13 +296,15 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
                               <Button 
                                 variant="outline" 
                                 size="sm" 
-                                className="text-sm px-4 py-2 h-auto rounded-full hover:bg-primary hover:text-primary-foreground transition-colors" 
+                                aria-label={`Send suggestion: ${prompt}`}
+                                className="text-sm px-4 py-2 h-auto rounded-full hover:bg-primary hover:text-primary-foreground transition-colors border-border/60 dark:border-border/40 max-w-full truncate"
                                 onClick={() => submitMessage(prompt)}
                               >
                                 {prompt}
                               </Button>
                             </motion.div>
                           ))}
+                          </div>
                         </motion.div>
                       </div>
                     </motion.div>
@@ -343,6 +346,7 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
                   <form onSubmit={handleSubmit}>
                     <div className="relative w-full flex flex-col gap-4">
                       <Textarea
+                        ref={textareaRef}
                         data-testid="multimodal-input"
                         placeholder="Send a message..."
                         value={input}
