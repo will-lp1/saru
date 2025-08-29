@@ -15,6 +15,12 @@ interface AIChatWidgetProps {
   date: string;
 }
 
+const SAMPLE_PROMPT: Array<string> = [
+  "Summarize this document",
+  "Explain the main concepts",
+  "What are the key takeaways?",
+];
+
 export default function AIChatWidget({ context, title, author, date }: AIChatWidgetProps) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([]);
@@ -22,8 +28,8 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [input, setInput] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [messagesContainerRef, messagesEndRef] = useScrollToBottom<HTMLDivElement>();
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -35,6 +41,11 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
     setInput('');
     setError(null);
     setLoading(false);
+  };
+
+  const handleCloseChat = () => {
+    abortControllerRef.current?.abort();
+    setOpen(false);
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -106,11 +117,85 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
     setLoading(false);
   };
 
+  const submitMessage = async (content: string): Promise<void> => {
+    if (!content.trim() || loading) return;
+    setError(null);
+    setLoading(true);
+    // abort any previous
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const userMessage = { id: Date.now().toString(), role: 'user' as const, content };
+    // Build next messages array and use for conversation
+    const nextMessages = [...messagesRef.current, userMessage];
+    setMessages(nextMessages);
+    setInput('');
+    const conversation = nextMessages;
+    let res: Response;
+    try {
+      res = await fetch('/api/blog-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: conversation, context, title, author, date }),
+        signal: controller.signal,
+      });
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      console.error(err);
+      setError('Network error');
+      setLoading(false);
+      return;
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(text);
+      setError('Failed to load AI response');
+      setLoading(false);
+      return;
+    }
+    const reader = res.body?.getReader();
+    if (!reader) {
+      setLoading(false);
+      return;
+    }
+    const decoder = new TextDecoder();
+    let done = false;
+    const assistantId = Date.now().toString() + '-assistant';
+    setMessages(prev => [...prev, { id: assistantId, role: 'assistant' as const, content: '' }]);
+    while (!done) {
+      try {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+        if (value) {
+          const chunk = decoder.decode(value);
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === assistantId ? { ...msg, content: msg.content + chunk } : msg
+            )
+          );
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          return;
+        }
+        console.error(err);
+        break;
+      }
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
     if (open && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
     }
   }, [messages, open]);
+
+  useEffect(() => {
+    if (open && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [open]);
 
   return (
     <>
@@ -141,7 +226,7 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 z-40"
-              onClick={() => setOpen(false)}
+              onClick={handleCloseChat}
             />
             <motion.div
               initial={{ opacity: 0, y: 50, scale: 0.95 }}
@@ -167,7 +252,7 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
                     variant="ghost"
                     size="icon"
                     className="size-8 shrink-0"
-                    onClick={() => setOpen(false)}
+                    onClick={handleCloseChat}
                     title="Close Chat"
                   >
                     <X className="size-4" />
@@ -175,41 +260,93 @@ export default function AIChatWidget({ context, title, author, date }: AIChatWid
                 </header>
 
                 <div ref={messagesContainerRef} className="flex flex-col min-w-0 gap-6 flex-1 overflow-y-scroll pt-4">
-                  {messages.map(message => (
-                    <div
-                      key={message.id}
-                      className="w-full mx-auto max-w-3xl px-4 group/message"
-                      data-role={message.role}
+                  {messages.length === 0 ? (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5 }}
+                      className="flex flex-col items-center justify-center flex-1 px-4"
                     >
-                      <div className="flex gap-4 w-full group-data-[role=user]/message:ml-auto group-data-[role=user]/message:max-w-2xl group-data-[role=user]/message:w-fit">
-                        {message.role === 'assistant' && (
-                          <div className="size-8 flex items-center justify-center rounded-full ring-1 shrink-0 ring-border bg-background overflow-hidden relative">
-                            <img
-                              src="/images/leopardprintbw.svg"
-                              alt="Snow Leopard"
-                              className="object-cover dark:invert"
-                            />
+                      <div className="w-full max-w-2xl mx-auto text-center">
+                        <div className="mb-6">
+                          <motion.h3 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.3, duration: 0.3 }}
+                            className="text-lg font-semibold mb-2"
+                          >
+                            How can I help you with this document?
+                          </motion.h3>
+                        </div>
+                        <motion.div 
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.5, duration: 0.3 }}
+                          className="flex flex-col items-center gap-3"
+                        >
+                          <p className="text-sm text-muted-foreground">Try asking:</p>
+                          <div className="flex flex-wrap gap-2 justify-center max-w-full">
+                          {SAMPLE_PROMPT.map((prompt, index) => (
+                            <motion.div
+                              key={prompt}
+                              initial={{ opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ delay: 0.6 + index * 0.1, duration: 0.3 }}
+                            >
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                aria-label={`Send suggestion: ${prompt}`}
+                                className="text-sm px-4 py-2 h-auto rounded-full hover:bg-primary hover:text-primary-foreground transition-colors border-border/60 dark:border-border/40 max-w-full truncate"
+                                onClick={() => submitMessage(prompt)}
+                              >
+                                {prompt}
+                              </Button>
+                            </motion.div>
+                          ))}
                           </div>
-                        )}
-                        <div className="flex flex-col gap-4 w-full">
-                          <div data-testid="message-content" className="flex flex-row gap-2 items-start">
-                            <div className={message.role === 'user' ? 'bg-primary text-primary-foreground px-3 py-2 rounded-xl' : ''}>
-                              <Markdown>
-                              {message.content}
-                              </Markdown>
+                        </motion.div>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    messages.map(message => (
+                      <div
+                        key={message.id}
+                        className="w-full mx-auto max-w-3xl px-4 group/message"
+                        data-role={message.role}
+                      >
+                        <div className="flex gap-4 w-full group-data-[role=user]/message:ml-auto group-data-[role=user]/message:max-w-2xl group-data-[role=user]/message:w-fit">
+                          {message.role === 'assistant' && (
+                            <div className="size-8 flex items-center justify-center rounded-full ring-1 shrink-0 ring-border bg-background overflow-hidden relative">
+                              <img
+                                src="/images/leopardprintbw.svg"
+                                alt="Snow Leopard"
+                                className="object-cover dark:invert"
+                              />
+                            </div>
+                          )}
+                          <div className="flex flex-col gap-4 w-full">
+                            <div data-testid="message-content" className="flex flex-row gap-2 items-start">
+                              <div className={message.role === 'user' ? 'bg-primary text-primary-foreground px-3 py-2 rounded-xl' : ''}>
+                                <Markdown>
+                                {message.content}
+                                </Markdown>
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                   <div ref={messagesEndRef} className="shrink-0 min-w-[24px] min-h-[24px]" />
                 </div>
 
-                <div className="p-4 border-t border-zinc-200 dark:border-zinc-700 relative">
+                <div className="p-4 border-t border-zinc-200  dark:border-zinc-700 relative">
+                
                   <form onSubmit={handleSubmit}>
                     <div className="relative w-full flex flex-col gap-4">
                       <Textarea
+                        ref={textareaRef}
                         data-testid="multimodal-input"
                         placeholder="Send a message..."
                         value={input}
