@@ -40,7 +40,7 @@ export function createEditorPlugins(opts: EditorPluginOptions): Plugin[] {
     savePlugin({
       saveFunction: opts.performSave,
       initialLastSaved: opts.initialLastSaved,
-      debounceMs: 1000, 
+      debounceMs: 5000, 
       documentId: opts.documentId,
       isCurrentVersion: opts.isCurrentVersion,
     }),

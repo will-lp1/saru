@@ -67,7 +67,7 @@ export function createSaveFunction(currentDocumentIdRef: React.MutableRefObject<
 
 export function savePlugin({
   saveFunction,
-  debounceMs = 1000, 
+  debounceMs = 5000, 
   initialLastSaved = null,
   documentId,
   isCurrentVersion = () => true,
@@ -92,7 +92,9 @@ export function savePlugin({
     if (editorViewInstance) {
       const content = buildContentFromDocument(editorViewInstance.state.doc);
       saveFunction(content)
-        .then(() => versionCache.invalidateVersions(documentId).catch(()=>{}))
+        .then(() => {
+          window.dispatchEvent(new CustomEvent('document-updated', { detail: { documentId } }));
+        })
         .catch((e) => console.warn('[SavePlugin] Flush save failed', e));
     }
   };
@@ -213,6 +215,7 @@ export function savePlugin({
               try {
                 await versionCache.invalidateVersions(documentId);
                 console.log('[SavePlugin] Invalidated version cache after save');
+                window.dispatchEvent(new CustomEvent('document-updated', { detail: { documentId } }));
               } catch(err){
                 console.warn('[SavePlugin] Cache invalidation failed', err);
               }
@@ -371,6 +374,6 @@ export function createDebouncedVersionHandler(currentDocumentIdRef: React.Mutabl
       } catch (error) {
         console.error(`[Debounced Version] Failed to create version for ${currentEditorPropId}:`, error);
       }
-    }, 5000); // 5 seconds
+    }, 5000); 
   };
 } 

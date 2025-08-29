@@ -8,9 +8,6 @@ import {
 } from '@/lib/db/queries';
 import { Document } from '@snow-leopard/db';
 
-const VERSION_THRESHOLD_MINUTES = 10; 
-const DEBOUNCE_VERSION_SECONDS = 5; 
-
 /**
  * Handles document update operations (POST)
  * Updates the latest version if within threshold and metadata matches,

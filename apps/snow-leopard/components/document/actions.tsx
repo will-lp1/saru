@@ -1,3 +1,5 @@
+"use client";
+
 import { Loader2, Check, AlertTriangle } from "lucide-react";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";

@@ -40,7 +40,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
         else if (op === DIFF_DELETE) deletions += text.length;
       }
 
-      const timeField = (i === versions.length - 1 && v.version === undefined /* current */)
+      const timeField = (i === versions.length - 1)
         ? (v as any).updatedAt ?? v.createdAt
         : v.createdAt;
 
@@ -160,8 +160,8 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
 
   const handlePointerLeave = () => {
     setPressStart(null);
-    if (hoverIndex !== null && hoverIndex !== selectedIndex) {
-      if (isViewingHistory && selectedIndex !== null) {
+    if (hoverIndex !== null) {
+      if (isViewingHistory && selectedIndex !== null && selectedIndex < versions.length - 1) {
         const v = versions[selectedIndex];
         window.dispatchEvent(
           new CustomEvent('preview-document-update', {
@@ -220,7 +220,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
     <div className="w-full">
       {isViewingHistory && (
         <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30 border-b text-muted-foreground text-xs">
-          <span>Viewing version {(selectedIndex || 0) + 1} of {versions.length}</span>
+          <span>Viewing history</span>
           <button 
             onClick={goToLatest}
             className="px-2 py-0.5 text-xs bg-background border border-border rounded hover:bg-accent hover:text-accent-foreground transition-colors"

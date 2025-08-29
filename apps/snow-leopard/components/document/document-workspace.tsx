@@ -20,6 +20,7 @@ import type { User } from '@/lib/auth';
 import { PublishSettingsMenu } from '@/components/publish-settings-menu';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useDocumentVersions } from '@/hooks/use-document-versions';
 
 const Editor = dynamic(() => import('@/components/document/editor').then(mod => mod.Editor), {
   ssr: false,
@@ -64,9 +65,19 @@ export function AlwaysVisibleArtifact({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'edit' | 'diff'>('edit');
 
-  const [documents, setDocuments] = useState<Document[]>(initialDocuments);
-  const [currentVersionIndex, setCurrentVersionIndex] = useState<number>(initialDocuments.length > 0 ? initialDocuments.length - 1 : -1);
-  
+  const { versions: swrVersions, mutate: mutateVersions } = useDocumentVersions(initialDocumentId, user?.id);
+  const [documents, setDocuments] = useState<Document[]>(swrVersions);
+
+  useEffect(() => {
+    setDocuments(swrVersions);
+  }, [swrVersions]);
+
+  const [currentVersionIndex, setCurrentVersionIndex] = useState<number>(swrVersions.length > 0 ? swrVersions.length - 1 : -1);
+
+  useEffect(() => {
+    setCurrentVersionIndex(swrVersions.length > 0 ? swrVersions.length - 1 : -1);
+  }, [swrVersions.length]);
+
   useEffect(() => {
     if (initialDocumentId && initialDocumentId !== 'init') {
       const fetchAllVersions = async () => {
@@ -323,11 +334,18 @@ export function AlwaysVisibleArtifact({
     window.addEventListener('document-renamed', handleDocumentRenamed as unknown as EventListener);
     window.addEventListener('version-fork', handleVersionFork as unknown as EventListener);
     
+    const handleDocumentUpdated = () => {
+      mutateVersions();
+    };
+
+    window.addEventListener('document-updated', handleDocumentUpdated as unknown as EventListener);
+    
     return () => {
       window.removeEventListener('document-renamed', handleDocumentRenamed as unknown as EventListener);
       window.removeEventListener('version-fork', handleVersionFork as unknown as EventListener);
+      window.removeEventListener('document-updated', handleDocumentUpdated as unknown as EventListener);
     };
-  }, [newTitle, editingTitle, setDocuments, document.documentId, user?.id]);
+  }, [newTitle, editingTitle, setDocuments, document.documentId, user?.id, mutateVersions]);
 
   const handleDocumentUpdate = (updatedFields: Partial<Document>) => {
       setDocuments(prevDocs =>
@@ -597,7 +615,7 @@ export function AlwaysVisibleArtifact({
              ) : (
                  <Suspense fallback={<EditorSkeleton />}>
                      <Editor
-                        key={editorDocumentId}
+                        key={`${editorDocumentId}-${currentVersionIndex}`}
                         content={editorContent}
                         status={'idle'}
                         isCurrentVersion={isCurrentVersion}

@@ -39,7 +39,10 @@ export function diffPlugin(documentId: string): Plugin {
           .setMeta('external', true)
           .setMeta('addToHistory', false);
 
-        requestAnimationFrame(() => editorView.dispatch(tr));
+        try {
+          requestAnimationFrame(() => editorView.dispatch(tr));
+        } catch (err) {
+        }
 
         previewActiveRef = true;
         lastPreviewContentRef = newContent;
