@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
 import type { Document } from '@snow-leopard/db';
-import { generateUUID, versionCache } from '@/lib/utils';
+import { generateUUID } from '@/lib/utils';
 import { DocumentActions } from '@/components/document/actions';
 import { VersionRail } from '@/components/document/version-rail';
 import { Button } from '@/components/ui/button';
@@ -71,11 +71,15 @@ export function AlwaysVisibleArtifact({
   const [currentVersionIndex, setCurrentVersionIndex] = useState<number>(swrVersions.length > 0 ? swrVersions.length - 1 : -1);
 
   useEffect(() => {
-    if (!swrVersions.length) return;
-
-    const wasAtLatest = currentVersionIndex === -1 || currentVersionIndex === documents.length - 1;
+    const wasAtLatest =
+      currentVersionIndex === -1 || currentVersionIndex === documents.length - 1;
 
     setDocuments(swrVersions);
+
+    if (swrVersions.length === 0) {
+      setCurrentVersionIndex(-1);
+      return;
+    }
 
     if (wasAtLatest || currentVersionIndex >= swrVersions.length) {
       setCurrentVersionIndex(swrVersions.length - 1);
@@ -393,7 +397,7 @@ export function AlwaysVisibleArtifact({
   const handleVersionChangeByIndex = useCallback((index: number) => {
     if (index < 0 || index >= documents.length) return;
     setCurrentVersionIndex(index);
-    setMode('diff');
+    setMode(index === documents.length - 1 ? 'edit' : 'diff');
   }, [documents.length]);
 
   const getContentForVersion = useCallback((index: number): string => {
