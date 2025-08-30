@@ -1,8 +1,11 @@
+'use client';
+
 import * as React from 'react';
 import * as Slider from '@radix-ui/react-slider';
 import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip as ReTooltip, ReferenceLine } from 'recharts';
 import { diff_match_patch, DIFF_INSERT, DIFF_DELETE } from 'diff-match-patch';
 import { formatDistanceToNow } from 'date-fns';
+import { Button } from '../ui/button';
 
 interface VersionData {
   id: string;
@@ -16,17 +19,10 @@ interface VersionRailProps {
   currentIndex: number;
   onIndexChange: (index: number) => void;
   baseDocumentId: string;
-  /** When true, the history request is still in flight – render a skeleton */
   isLoading?: boolean;
 }
 
 export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumentId, isLoading }: VersionRailProps){
-  if (isLoading || versions.length <= 1) {
-    return (
-      <div className="w-full border-b bg-background h-1 group-hover:h-12 transition-all duration-200" />
-    );
-  }
-
   const [hoverIndex, setHoverIndex] = React.useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = React.useState<number | null>(null);
   const [pressStart, setPressStart] = React.useState<number | null>(null);
@@ -60,6 +56,18 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
       };
     });
   },[versions]);
+  React.useEffect(() => {
+    if (currentIndex === versions.length - 1) {
+      setSelectedIndex(currentIndex);
+    } else {
+      setSelectedIndex(currentIndex);
+    }
+  }, [currentIndex, versions.length]);
+  
+  const isViewingHistory = selectedIndex !== null && selectedIndex < versions.length - 1;
+  if (isLoading || versions.length <= 1) {
+    return <div className="w-full border-b bg-background h-1 group-hover:h-12 transition-all duration-200" />;
+  }
 
   const handleValueChange = (val:number[])=>{
     const idx=val[0];
@@ -75,8 +83,9 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
   const commitIndex = (idx:number) => {
     setSelectedIndex(idx);
     
+    onIndexChange(idx);
+
     if (idx >= versions.length - 1) {
-      onIndexChange(idx);
       window.dispatchEvent(
         new CustomEvent('cancel-document-update', {
           detail: { documentId: baseDocumentId },
@@ -187,16 +196,6 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
     }
   };
 
-  React.useEffect(() => {
-    if (currentIndex === versions.length - 1) {
-      setSelectedIndex(currentIndex);
-    } else {
-      setSelectedIndex(currentIndex);
-    }
-  }, [currentIndex, versions.length]);
-  
-  const isViewingHistory = selectedIndex !== null && selectedIndex < versions.length - 1;
-
   const Tooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: { ts: string; additions: number; deletions: number } }> }) => {
     if(active&&payload&&payload.length){
       const d=payload[0].payload;
@@ -226,18 +225,6 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
 
   return (
     <div className="w-full">
-      {isViewingHistory && (
-        <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30 border-b text-muted-foreground text-xs">
-          <span>Viewing history</span>
-          <button 
-            onClick={goToLatest}
-            className="px-2 py-0.5 text-xs bg-background border border-border rounded hover:bg-accent hover:text-accent-foreground transition-colors"
-          >
-            Latest
-          </button>
-        </div>
-      )}
-      
       <div
         className={`w-full border-b bg-background transition-all duration-200 group ${isViewingHistory ? 'h-12' : 'hover:h-12 h-1'}`}
         onPointerLeave={handlePointerLeave}
@@ -297,6 +284,19 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
         <Slider.Thumb className="hidden" />
       </Slider.Root>
       </div>
+
+      {isViewingHistory && (
+        <div className="flex items-center justify-center py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={goToLatest}
+            className="h-7 px-3 text-xs"
+          >
+            Return to latest
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

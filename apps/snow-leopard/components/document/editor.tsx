@@ -420,3 +420,5 @@ function areEqual(prevProps: EditorProps, nextProps: EditorProps) {
 }
 
 export const Editor = memo(PureEditor, areEqual);
+
+

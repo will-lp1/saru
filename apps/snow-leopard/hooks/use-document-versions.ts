@@ -1,4 +1,5 @@
 import useSWR from 'swr';
+import { useEffect } from 'react';
 import { versionCache } from '@/lib/utils';
 import type { Document } from '@snow-leopard/db';
 
@@ -40,6 +41,12 @@ export function useDocumentVersions(documentId: string | null, userId?: string |
     fallbackData: undefined,
     keepPreviousData: true,
   });
+
+  useEffect(() => {
+    if (key) {
+      swr.mutate(undefined, { revalidate: true });
+    }
+  }, [documentId, userId]);
 
   if (!swr.data && documentId && userId) {
     fallbackData().then((cached) => {

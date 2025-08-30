@@ -18,7 +18,6 @@ export function DocumentActions({ content, saveStatus }: DocumentActionsProps) {
       return (
         <div className="flex items-center gap-1 text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
-          <span className="text-xs">Saving…</span>
         </div>
       );
     }
@@ -33,7 +32,6 @@ export function DocumentActions({ content, saveStatus }: DocumentActionsProps) {
     return (
       <div className="flex items-center gap-1 text-green-600">
         <Check className="size-4" />
-        <span className="text-xs">Saved</span>
       </div>
     );
   })();

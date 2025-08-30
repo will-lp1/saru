@@ -48,6 +48,7 @@ export function createSaveFunction(currentDocumentIdRef: React.MutableRefObject<
           content: contentToSave,
           isDebouncedVersion: true,
         }),
+        keepalive: true,
       });
 
       if (!response.ok) {
@@ -253,9 +254,11 @@ export function savePlugin({
          if (document.hidden) flushPendingSave();
        };
        const handleBeforeUnload = () => flushPendingSave();
+       const handlePageHide = () => flushPendingSave();
 
        document.addEventListener('visibilitychange', handleVisibility);
        window.addEventListener('beforeunload', handleBeforeUnload);
+       window.addEventListener('pagehide', handlePageHide);
 
        return {
          destroy() {
@@ -265,6 +268,7 @@ export function savePlugin({
            }
            document.removeEventListener('visibilitychange', handleVisibility);
            window.removeEventListener('beforeunload', handleBeforeUnload);
+           window.removeEventListener('pagehide', handlePageHide);
          }
        };
     }
@@ -296,6 +300,7 @@ export function createForceSaveHandler(currentDocumentIdRef: React.MutableRefObj
           content: event.detail.content || "",
           isDebouncedVersion: true,
         }),
+        keepalive: true,
       });
 
       if (!response.ok) {

@@ -579,50 +579,41 @@ export function SidebarDocuments({ user, initialDocuments }: { user?: User; init
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="h-7 text-xs border border-r bg-sidebar-accent"
               />
+              
             </div>
             
             {filteredDocuments.length > 0 && (
-              <div className="flex flex-wrap items-center justify-start px-2 py-1 mb-2 gap-2">
-                {!isSelectionMode && (
+              <>
+                <div className="grid grid-cols-2 gap-2 px-2 mt-1 mb-2">
                   <Button
-                    variant="outline"
+                    variant={"outline"}
                     size="sm"
                     onClick={handleToggleSelectionMode}
-                    className="h-7 text-xs px-1"
+                    className={cn(
+                      "h-7 text-xs w-full",
+                      !isSelectionMode && "col-span-2"
+                    )}
                   >
-                    Select
+                    {isSelectionMode ? "Cancel" : "Select"}
                   </Button>
-                )}
-                {isSelectionMode && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleSelectAll}
-                      className="h-7 text-xs px-1"
-                    >
-                      {selectedDocuments.size === filteredDocuments.length ? 'Deselect All' : 'Select All'}
-                    </Button>
+
+                  {isSelectionMode && (
+                    <>
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => selectedDocuments.size > 0 && setShowMultiDeleteDialog(true)}
+                      onClick={() =>
+                        selectedDocuments.size > 0 && setShowMultiDeleteDialog(true)
+                      }
                       disabled={selectedDocuments.size === 0}
-                      className="h-7 text-xs px-1"
+                      className="h-7 text-xs w-full"
                     >
                       Delete ({selectedDocuments.size})
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleToggleSelectionMode}
-                      className="h-7 text-xs px-1"
-                    >
-                      Cancel
-                    </Button>
-                  </>
-                )}
-              </div>
+                    </>
+                  )}
+                </div>
+              </>
             )}
 
             <SidebarGroupContent>

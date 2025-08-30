@@ -568,15 +568,13 @@ export function AlwaysVisibleArtifact({
       </div>
       
       <div className="bg-background text-foreground dark:bg-black dark:text-white h-full overflow-y-auto !max-w-full items-center relative">
-        {(documents.length > 0 || versionsLoading) && (
-          <VersionRail
-            versions={documents}
-            currentIndex={currentVersionIndex}
-            onIndexChange={handleVersionChangeByIndex}
-            baseDocumentId={editorDocumentId}
-            isLoading={versionsLoading}
-          />
-        )}
+        <VersionRail
+          versions={documents}
+          currentIndex={currentVersionIndex}
+          onIndexChange={handleVersionChangeByIndex}
+          baseDocumentId={editorDocumentId}
+          isLoading={versionsLoading}
+        />
 
         <div className="px-8 py-6 mx-auto max-w-3xl">
              {isPending ? (
