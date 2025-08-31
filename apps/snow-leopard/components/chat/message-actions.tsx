@@ -1,4 +1,4 @@
-import type { Message } from 'ai';
+import type { ChatMessage } from '@/lib/types';
 import { useCopyToClipboard } from 'usehooks-ts';
 import { memo } from 'react';
 import { CopyIcon } from '../icons';
@@ -10,6 +10,7 @@ import {
   TooltipTrigger,
 } from '../ui/tooltip';
 import { toast } from 'sonner';
+import { getTextFromParts } from '@/lib/utils';
 
 export function PureMessageActions({
   chatId,
@@ -17,15 +18,17 @@ export function PureMessageActions({
   isLoading,
 }: {
   chatId: string;
-  message: Message;
+  message: ChatMessage;
   isLoading: boolean;
 }) {
   const [_, copyToClipboard] = useCopyToClipboard();
 
   if (isLoading) return null;
   if (message.role === 'user') return null;
-  if (message.toolInvocations && message.toolInvocations.length > 0)
-    return null;
+  
+  // Check if message has tool calls (parts with tool-call type)
+  const hasToolCalls = message.parts?.some(part => part.type.startsWith('tool-'));
+  if (hasToolCalls) return null;
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -36,9 +39,7 @@ export function PureMessageActions({
               className="py-1 px-2 h-fit text-muted-foreground"
               variant="outline"
               onClick={async () => {
-                const content = typeof message.content === 'string' 
-                  ? message.content 
-                  : JSON.stringify(message.content);
+                const content = getTextFromParts(message.parts || []);
                 await copyToClipboard(content);
                 toast.success('Copied to clipboard!');
               }}

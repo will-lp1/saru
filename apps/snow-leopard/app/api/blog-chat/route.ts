@@ -27,8 +27,8 @@ export async function POST(request: Request) {
     new ReadableStream({
       async start(controller) {
         for await (const delta of fullStream) {
-          if (delta.type === 'text-delta') {
-            controller.enqueue(new TextEncoder().encode(delta.textDelta));
+          if (delta.type === 'text') {
+            controller.enqueue(new TextEncoder().encode(delta.text));
           }
         }
         controller.close();

@@ -1,37 +1,37 @@
 'use client';
 
-import { ChatRequestOptions, Message } from 'ai';
-import { Button } from '../ui/button';
-import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
-import { Textarea } from '../ui/textarea';
+import { Button } from '@/components/ui/button';
+import {
+  type Dispatch,
+  type SetStateAction,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { Textarea } from '@/components/ui/textarea';
 import { deleteTrailingMessages } from '@/app/api/chat/actions/chat';
-import { toast } from 'sonner';
+import type { UseChatHelpers } from '@ai-sdk/react';
+import type { ChatMessage } from '@/lib/types';
+import { getTextFromMessage } from '@/lib/utils';
 
 export type MessageEditorProps = {
-  message: Message;
+  message: ChatMessage;
   setMode: Dispatch<SetStateAction<'view' | 'edit'>>;
-  setMessages: (
-    messages: Message[] | ((messages: Message[]) => Message[]),
-  ) => void;
-  reload: (
-    chatRequestOptions?: ChatRequestOptions,
-  ) => Promise<string | null | undefined>;
+  setMessages: UseChatHelpers<ChatMessage>['setMessages'];
+  regenerate: UseChatHelpers<ChatMessage>['regenerate'];
 };
 
 export function MessageEditor({
   message,
   setMode,
   setMessages,
-  reload,
+  regenerate,
 }: MessageEditorProps) {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Handle content properly regardless of type
-  const initialContent = typeof message.content === 'string' 
-    ? message.content 
-    : JSON.stringify(message.content);
-    
-  const [draftContent, setDraftContent] = useState<string>(initialContent);
+  const [draftContent, setDraftContent] = useState<string>(
+    getTextFromMessage(message),
+  );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -88,9 +88,9 @@ export function MessageEditor({
               const index = messages.findIndex((m) => m.id === message.id);
 
               if (index !== -1) {
-                const updatedMessage = {
+                const updatedMessage: ChatMessage = {
                   ...message,
-                  content: draftContent,
+                  parts: [{ type: 'text', text: draftContent }],
                 };
 
                 return [...messages.slice(0, index), updatedMessage];
@@ -100,7 +100,7 @@ export function MessageEditor({
             });
 
             setMode('view');
-            reload();
+            regenerate();
           }}
         >
           {isSubmitting ? 'Sending...' : 'Send'}

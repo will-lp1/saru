@@ -1,7 +1,7 @@
 'use client';
 
-import type { Attachment, Message, ChatRequestOptions } from 'ai';
 import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 import { useState, useEffect } from 'react';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { generateUUID } from '@/lib/utils';
@@ -16,10 +16,11 @@ import { DataStreamHandler } from '@/components/data-stream-handler';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { useAiOptionsValue } from '@/hooks/ai-options';
+import type { Attachment, ChatMessage } from '@/lib/types';
 
 export interface ChatProps {
   id?: string;
-  initialMessages: Array<Message>;
+  initialMessages: ChatMessage[];
   selectedChatModel?: string;
   isReadonly?: boolean;
 }
@@ -65,38 +66,49 @@ export function Chat({
   const {
     messages,
     setMessages,
-    handleSubmit,
-    input,
-    setInput,
-    append,
+    sendMessage,
     status,
     stop,
-    reload,
-    data,
-    error
-  } = useChat({
-    api: '/api/chat',
+    regenerate,
+  } = useChat<ChatMessage>({
     id: chatId,
-    initialMessages,
-    body: {
-      id: chatId,
-      selectedChatModel: selectedChatModel,
-      aiOptions: {
-        writingStyleSummary,
-        applyStyle,
+    messages: initialMessages,
+    generateId: generateUUID,
+    transport: new DefaultChatTransport({
+      api: '/api/chat',
+      prepareSendMessagesRequest: ({ messages, id }) => {
+        const currentDocId = document.documentId;
+        const contextData: { activeDocumentId?: string | null; mentionedDocumentIds?: string[] } = {};
+        if (currentDocId && currentDocId !== 'init') {
+          contextData.activeDocumentId = currentDocId;
+        } else {
+          contextData.activeDocumentId = null;
+        }
+        if (confirmedMentions.length > 0) {
+          contextData.mentionedDocumentIds = confirmedMentions.map((doc) => doc.id);
+        }
+
+        return {
+          body: {
+            id,
+            message: messages.at(-1),
+            selectedChatModel: selectedChatModel,
+            data: contextData,
+            aiOptions: {
+              writingStyleSummary,
+              applyStyle,
+            },
+          },
+        };
       },
-    },
-    onResponse: (res) => {
-      if (res.status === 401) {
-        console.error('Chat Unauthorized');
-      }
-    },
-    onError: (err) => {
+    }),
+    onError: (err: unknown) => {
       console.error('Chat Error:', err);
     },
   });
 
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
+  const [input, setInput] = useState('');
 
   const handleMentionsChange = (mentions: MentionedDocument[]) => {
     setConfirmedMentions(mentions);
@@ -224,39 +236,7 @@ export function Chat({
 
   const wrappedSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
-    if (documentContextActive && messages.length === initialMessages.length) {
-      toast.success(`Using document context: ${document.title}`, {
-        icon: <FileText className="size-4" />,
-        duration: 3000,
-        id: `doc-context-${document.documentId}`
-      });
-    }
-    
-    console.log('[Chat] Submitting with Model:', selectedChatModel);
-
-    const contextData: { 
-      activeDocumentId?: string | null;
-      mentionedDocumentIds?: string[]; 
-    } = {};
-    
-    const currentDocId = document.documentId;
-    if (currentDocId && currentDocId !== 'init') {
-      contextData.activeDocumentId = currentDocId;
-    } else {
-      contextData.activeDocumentId = null ;
-    }
-    
-    if (confirmedMentions.length > 0) {
-      contextData.mentionedDocumentIds = confirmedMentions.map(doc => doc.id);
-    }
-    
-    const options: ChatRequestOptions = {
-      data: contextData,
-    };
-
-    handleSubmit(e, options);
-
+    // Form submit is handled by the input component; we only reset mentions here.
     setConfirmedMentions([]);
   };
 
@@ -280,7 +260,7 @@ export function Chat({
             status={status}
             messages={messages}
             setMessages={setMessages}
-            reload={reload}
+            regenerate={regenerate}
             isReadonly={isReadonly}
             isArtifactVisible={false}
           />
@@ -294,14 +274,13 @@ export function Chat({
               chatId={chatId}
               input={input}
               setInput={setInput}
-              handleSubmit={handleSubmit}
               status={status}
               stop={stop}
               attachments={attachments}
               setAttachments={setAttachments}
               messages={messages}
               setMessages={setMessages}
-              append={append}
+              append={sendMessage}
               confirmedMentions={confirmedMentions}
               onMentionsChange={handleMentionsChange}
             />

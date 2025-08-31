@@ -1,11 +1,21 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 
-export function useScrollToBottom<T extends HTMLElement>(): [
-  RefObject<T>,
-  RefObject<T>,
-] {
+export function useScrollToBottom<T extends HTMLElement>(): {
+  isAtBottom: boolean;
+  scrollToBottom: () => void;
+  containerRef: RefObject<T>;
+  endRef: RefObject<T>;
+} {
   const containerRef = useRef<T>(null);
   const endRef = useRef<T>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  const scrollToBottom = () => {
+    const end = endRef.current;
+    if (end) {
+      end.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  };
 
   useEffect(() => {
     const container = containerRef.current;
@@ -16,6 +26,14 @@ export function useScrollToBottom<T extends HTMLElement>(): [
         end.scrollIntoView({ behavior: 'instant', block: 'end' });
       });
 
+      const handleScroll = () => {
+        if (container) {
+          const { scrollTop, scrollHeight, clientHeight } = container;
+          const atBottom = scrollTop + clientHeight >= scrollHeight - 10; // 10px threshold
+          setIsAtBottom(atBottom);
+        }
+      };
+
       observer.observe(container, {
         childList: true,
         subtree: true,
@@ -23,9 +41,15 @@ export function useScrollToBottom<T extends HTMLElement>(): [
         characterData: true,
       });
 
-      return () => observer.disconnect();
+      container.addEventListener('scroll', handleScroll);
+      handleScroll(); // Check initial state
+
+      return () => {
+        observer.disconnect();
+        container.removeEventListener('scroll', handleScroll);
+      };
     }
   }, []);
 
-  return [containerRef, endRef];
+  return { isAtBottom, scrollToBottom, containerRef, endRef };
 }

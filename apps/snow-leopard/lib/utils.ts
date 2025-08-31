@@ -1,16 +1,7 @@
-import type {
-  CoreAssistantMessage,
-  CoreToolMessage,
-  Message,
-  TextStreamPart,
-  ToolInvocation,
-  ToolCall,
-  ToolResult,
-} from 'ai';
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-
-import type { Message as DBMessage, Document } from '@snow-leopard/db';
+import type { DbChatMessage, ChatMessage, ChatParts } from './types';
+import { convertToModelMessages } from 'ai';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -53,228 +44,194 @@ export function generateUUID(): string {
   });
 }
 
-function addToolMessageToChat({
-  toolMessage,
-  messages,
-}: {
-  toolMessage: CoreToolMessage;
-  messages: Array<Message>;
-}): Array<Message> {
-  return messages.map((message) => {
-    if (message.toolInvocations) {
-      return {
-        ...message,
-        toolInvocations: message.toolInvocations.map((toolInvocation) => {
-          const toolResult = toolMessage.content.find(
-            (tool) => tool.toolCallId === toolInvocation.toolCallId,
-          );
-
-          if (toolResult) {
-            return {
-              ...toolInvocation,
-              state: 'result',
-              result: toolResult.result,
-            };
-          }
-
-          return toolInvocation;
-        }),
-      };
-    }
-
-    return message;
-  });
-}
-
-// Extend ToolInvocation to include result
-type ExtendedToolInvocation = ToolInvocation & {
-  result?: any;
-  // applied?: boolean; // Remove applied flag
-};
-
+/**
+ * Convert database messages (with parts array) to UI messages
+ */
 export function convertToUIMessages(
-  messages: Array<DBMessage>,
-): Array<Message> {
-  const processedMessages: Array<Message> = [];
-
-  for (const message of messages) {
-    if (message.role === 'tool') {
-      // Process tool results and update the corresponding assistant message's invocation
-      const toolResults = Array.isArray(message.content) ? message.content : [message.content];
-
-      for (const toolResultContent of toolResults) {
-        if (toolResultContent?.type === 'tool_result') {
-          const toolCallId = toolResultContent.toolCallId || toolResultContent.content?.toolCallId;
-          const resultData = toolResultContent.result || toolResultContent.content?.result;
-
-          if (toolCallId) {
-            // Find the assistant message with the matching tool call ID
-            for (let i = processedMessages.length - 1; i >= 0; i--) {
-              const assistantMessage = processedMessages[i];
-              if (assistantMessage.role === 'assistant' && assistantMessage.toolInvocations) {
-                const invocationIndex = assistantMessage.toolInvocations.findIndex(
-                  (inv) => inv.toolCallId === toolCallId
-                );
-                if (invocationIndex !== -1) {
-                  const invocationToUpdate = assistantMessage.toolInvocations[invocationIndex] as ExtendedToolInvocation;
-                  invocationToUpdate.state = 'result';
-                  invocationToUpdate.result = resultData;
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-
-      continue;
-    }
-
-    let textContent = '';
-    let reasoning: string | undefined = undefined;
-    const toolInvocations: Array<ExtendedToolInvocation> = [];
-
-    if (typeof message.content === 'string') {
-      textContent = message.content;
-    } else if (Array.isArray(message.content)) {
-      for (const content of message.content) {
-        if (content.type === 'text') {
-          textContent += content.content;
-        } else if (content.type === 'tool_call') {
-          toolInvocations.push({
-            state: 'call',
-            toolCallId: content.toolCallId || content.content?.toolCallId,
-            toolName: content.toolName || content.content.toolName,
-            args: content.args || content.content.args,
-          });
-        } else if (content.type === 'tool_result') {
-          // Find matching tool invocation and update it
-          const existingInvocation = toolInvocations.find(
-            inv => inv.toolCallId === (content.toolCallId || content.content?.toolCallId)
-          );
-          if (existingInvocation) {
-            existingInvocation.state = 'result';
-            existingInvocation.result = content.result || content.content?.result;
-          } else {
-            // If no matching invocation found, create a new one
-            console.warn('[convertToUIMessages] Tool result found without matching call:', content);
-            toolInvocations.push({
-              state: 'result',
-              toolCallId: content.toolCallId || content.content?.toolCallId,
-              toolName: content.toolName || content.content?.toolName,
-              args: content.args || content.content?.args,
-              result: content.result || content.content?.result,
-            });
-          }
-        } else if (content.type === 'reasoning') {
-          reasoning = content.reasoning || content.content.reasoning;
-        }
-      }
-    }
-
-    processedMessages.push({
+  messages: Array<DbChatMessage>,
+): Array<ChatMessage> {
+  return messages
+    .filter(message => message.role !== 'tool') // Filter out tool messages at DB level
+    .map((message) => ({
       id: message.id,
-      role: message.role as Message['role'],
-      content: textContent,
-      reasoning,
-      toolInvocations: toolInvocations.length > 0 ? toolInvocations : undefined,
-    });
-  }
-
-  return processedMessages;
+      role: message.role as ChatMessage['role'],
+      parts: message.content,
+      createdAt: message.createdAt,
+    }));
 }
 
-type ResponseMessageWithoutId = CoreToolMessage | CoreAssistantMessage;
-type ResponseMessage = ResponseMessageWithoutId & { id: string };
-
-export function sanitizeResponseMessages({
-  messages,
-  reasoning,
-}: {
-  messages: Array<ResponseMessage>;
-  reasoning: string | undefined;
-}) {
-  const toolResultIds: Array<string> = [];
-
-  for (const message of messages) {
-    if (message.role === 'tool') {
-      for (const content of message.content) {
-        if (content.type === 'tool-result') {
-          toolResultIds.push(content.toolCallId);
-        }
-      }
-    }
-  }
-
-  const messagesBySanitizedContent = messages.map((message) => {
-    if (message.role !== 'assistant') return message;
-
-    if (typeof message.content === 'string') return message;
-
-    const sanitizedContent = message.content.filter((content) =>
-      content.type === 'tool-call'
-        ? toolResultIds.includes(content.toolCallId)
-        : content.type === 'text'
-          ? content.text.length > 0
-          : true,
-    );
-
-    if (reasoning) {
-      // @ts-expect-error: reasoning message parts in sdk is wip
-      sanitizedContent.push({ type: 'reasoning', reasoning });
-    }
-
-    return {
-      ...message,
-      content: sanitizedContent,
-    };
-  });
-
-  return messagesBySanitizedContent.filter(
-    (message) => message.content.length > 0,
-  );
+/**
+ * Convert UI messages to model messages for AI SDK
+ */
+export function convertUIToModelMessages(messages: Array<ChatMessage>) {
+  return convertToModelMessages(messages);
 }
 
-export function sanitizeUIMessages(messages: Array<Message>): Array<Message> {
-  const messagesBySanitizedToolInvocations = messages.map((message) => {
-    if (message.role !== 'assistant') return message;
-
-    if (!message.toolInvocations) return message;
-
-    const toolResultIds: Array<string> = [];
-
-    for (const toolInvocation of message.toolInvocations) {
-      if (toolInvocation.state === 'result') {
-        toolResultIds.push(toolInvocation.toolCallId);
-      }
-    }
-
-    const sanitizedToolInvocations = message.toolInvocations.filter(
-      (toolInvocation) =>
-        toolInvocation.state === 'result' ||
-        toolResultIds.includes(toolInvocation.toolCallId),
-    );
-
-    return {
-      ...message,
-      toolInvocations: sanitizedToolInvocations,
-    };
-  });
-
-  return messagesBySanitizedToolInvocations.filter(
-    (message) =>
-      message.content.length > 0 ||
-      (message.toolInvocations && message.toolInvocations.length > 0),
-  );
-}
-
-export function getMostRecentUserMessage(messages: Array<Message>) {
+/**
+ * Get the most recent user message from a conversation
+ */
+export function getMostRecentUserMessage(messages: Array<ChatMessage>) {
   const userMessages = messages.filter((message) => message.role === 'user');
   return userMessages.at(-1);
 }
 
+/**
+ * Extract text content from message parts
+ */
+export function getTextFromParts(parts: ChatParts): string {
+  return parts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join('');
+}
+
+/**
+ * Extract text content from a message (compatibility helper)
+ */
+export function getTextFromMessage(message: ChatMessage): string {
+  return getTextFromParts(message.parts || []);
+}
+
+/**
+ * Extract reasoning text from message parts
+ */
+export function getReasoningFromParts(parts: ChatParts): string | undefined {
+  const reasoningPart = parts.find((part) => part.type === 'reasoning');
+  return reasoningPart?.text;
+}
+
+/**
+ * Get tool invocations from message parts
+ */
+export function getToolInvocationsFromParts(parts: ChatParts) {
+  return parts
+    .filter((part) => part.type.startsWith('tool-') && 'toolCallId' in part)
+    .map((part: any) => ({
+      toolCallId: part.toolCallId,
+      toolName: part.toolName || part.type.replace('tool-', ''),
+      args: part.input || part.args,
+      state: part.state || 'call' as const,
+    }));
+}
+
+/**
+ * Get tool results from message parts  
+ */
+export function getToolResultsFromParts(parts: ChatParts) {
+  return parts
+    .filter((part) => part.type.startsWith('tool-') && 'output' in part)
+    .map((part: any) => ({
+      toolCallId: part.toolCallId,
+      toolName: part.toolName || part.type.replace('tool-', ''),
+      result: part.output || part.result,
+      state: 'result' as const,
+    }));
+}
+
+/**
+ * Create a text part
+ */
+export function createTextPart(text: string) {
+  return { type: 'text' as const, text };
+}
+
+/**
+ * Create a reasoning part
+ */
+export function createReasoningPart(text: string) {
+  return { type: 'reasoning' as const, text };
+}
+
+/**
+ * Create a tool call part
+ */
+export function createToolCallPart(toolCallId: string, toolName: string, args: any) {
+  return {
+    type: 'tool-call' as const,
+    toolCallId,
+    toolName,
+    args,
+  };
+}
+
+/**
+ * Create a tool result part
+ */
+export function createToolResultPart(toolCallId: string, toolName: string, result: any) {
+  return {
+    type: 'tool-result' as const,
+    toolCallId,
+    toolName,
+    result,
+  };
+}
+
+/**
+ * Legacy helper for backward compatibility - converts old content format to parts
+ */
+export function parseMessageContent(content: any): ChatParts {
+  if (Array.isArray(content)) {
+    return content;
+  }
+  
+  if (typeof content === 'string') {
+    try {
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // Not JSON, treat as plain text
+    }
+    return [createTextPart(content)];
+  }
+  
+  // If it's an object, wrap it in an array
+  return [content];
+}
+
+/**
+ * Sanitize response messages for storage - clean up tool calls without results
+ */
+export function sanitizeResponseMessages(messages: Array<any>) {
+  return messages.filter((message) => {
+    if (message.role === 'assistant' && Array.isArray(message.parts)) {
+      // Keep assistant messages that have text or completed tool calls
+      const hasText = message.parts.some((part: any) => part.type === 'text' && part.text?.length > 0);
+      const hasToolCalls = message.parts.some((part: any) => part.type === 'tool-call');
+      const hasToolResults = message.parts.some((part: any) => part.type === 'tool-result');
+      
+      // Only keep if it has text or if tool calls have corresponding results
+      return hasText || (hasToolCalls && hasToolResults);
+    }
+    return true;
+  });
+}
+
+/**
+ * Sanitize UI messages - remove incomplete tool calls and empty messages
+ */
+export function sanitizeUIMessages(messages: Array<ChatMessage>) {
+  return messages.filter((message) => {
+    if (message.role === 'assistant' && Array.isArray(message.parts)) {
+      // Keep assistant messages that have text or completed tool calls
+      const hasText = message.parts.some((part: any) => part.type === 'text' && part.text?.length > 0);
+      const hasToolCalls = message.parts.some((part: any) => part.type?.startsWith('tool-') && part.state !== 'result');
+      const hasToolResults = message.parts.some((part: any) => part.type?.startsWith('tool-') && part.state === 'result');
+      
+      // Only keep if it has text or if tool calls have corresponding results
+      return hasText || (hasToolCalls && hasToolResults);
+    }
+    return true;
+  });
+}
+
+export function sanitizeText(text: string) {
+  return text.replace('<has_function_call>', '');
+}
+
 export function getDocumentTimestampByIndex(
-  documents: Array<Document>,
+  documents: Array<any>,
   index: number,
 ) {
   if (!documents) return new Date();
@@ -510,3 +467,4 @@ class VersionCache {
 
 // Export singleton instance
 export const versionCache = new VersionCache();
+}

@@ -1,29 +1,30 @@
-import { tool, generateText } from 'ai';
-import { Session } from '@/lib/auth';
+import { tool, type UIMessageStreamWriter } from 'ai';
+import type { Session } from '@/lib/auth';
 import { z } from 'zod';
 import { getDocumentById } from '@/lib/db/queries';
-import { myProvider } from '@/lib/ai/providers';
+import type { ChatMessage } from '@/lib/types';
+import { updateTextDocument } from '@/lib/ai/document-helpers';
 
 interface UpdateDocumentProps {
   session: Session;
+  dataStream: UIMessageStreamWriter<ChatMessage>;
   documentId?: string;
 }
 
-export const updateDocument = ({ session: _session, documentId: defaultDocumentId }: UpdateDocumentProps) =>
+export const updateDocument = ({ session: _session, dataStream, documentId: defaultDocumentId }: UpdateDocumentProps) =>
   tool({
     description: 'Update a document based on a description. Returns the original and proposed new content for review.',
-    parameters: z.object({
-      description: z
-        .string()
-        .describe('The description of changes that need to be made'),
+    inputSchema: z.object({
+      description: z.string(),
     }),
     execute: async ({ description }) => {
-      const documentId = defaultDocumentId;
 
       try {
         if (!description.trim()) {
           return { error: 'No update description provided.' };
         }
+
+        const documentId = defaultDocumentId;
 
         if (!documentId ||
             documentId === 'undefined' ||
@@ -45,19 +46,29 @@ export const updateDocument = ({ session: _session, documentId: defaultDocumentI
         }
         const originalContent = document.content || '';
 
-        const prompt = `You are an expert editor. Here is the ORIGINAL document:\n\n${originalContent}\n\n---\n\nTASK: Apply the following edits.\n- Make only the minimal changes required to satisfy the description.\n- Keep paragraphs, sentences, and words that do **not** need to change exactly as they are.\n- Do **not** paraphrase or re-flow content unless strictly necessary.\n- Preserve existing formatting and line breaks.\n\nReturn ONLY the updated document with no additional commentary.\n\nDESCRIPTION: "${description}"`;
-
-        const { text: newContent } = await generateText({
-          model: myProvider.languageModel('artifact-model'),
-          prompt,
-          temperature: 0.2,
+        dataStream.write({
+          type: 'data-clear',
+          data: null,
+          transient: true,
         });
+
+        const updatedContent = await updateTextDocument({
+          document: { content: originalContent },
+          description,
+          dataStream,
+        });
+
+        // Ask the client to persist the streamed content to the database
+        dataStream.write({ type: 'data-force-save', data: null, transient: true } as any);
+
+        // Mark the tool stream as finished
+        dataStream.write({ type: 'data-finish', data: null, transient: true } as any);
 
         return {
           id: documentId,
           title: document.title,
-          originalContent: originalContent, 
-          newContent: newContent,           
+          originalContent: originalContent,
+          newContent: updatedContent,
           status: 'Update proposal generated.',
         };
 

@@ -12,12 +12,12 @@ export async function POST(request: Request) {
 
     const prompt = context
       ? `Given the following text context: "${context}"\n\nProvide exactly two common synonyms for the word "${word}" that fit well within that context. Separate the synonyms with a comma. Do not include the original word. Only output the synonyms. Example: joyful, cheerful`
-      : `Provide exactly two common synonyms for the word "${word}". Separate the synonyms with a comma. Do not include the original word. Only output the synonyms. Example: happy -> joyful, cheerful`;
+      : `Provide exactly two common synonyms for the word "${word}". Separate the synonyms with a comma. Do not include the original word. Only output the synonyms. Example: happy -> joyful, cheerful - OUTPUT a '-' if no synonyms are found. NEVER any commentary or explanation.`;
 
     const { text } = await generateText({
       model: myProvider.languageModel('artifact-model'),
       prompt,
-      maxTokens: 20,
+      maxOutputTokens: 20,
       temperature: 0.3,
     });
 

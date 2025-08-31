@@ -9,7 +9,7 @@ interface WebSearchProps {
 export const webSearch = ({ session }: WebSearchProps) =>
   tool({
     description: 'Performs a real-time web search using the Tavily API and returns structured search results.',
-    parameters: z.object({
+    inputSchema: z.object({
       query: z.string().min(1).describe('The search query.'),
       maxResults: z.number().optional().describe('Maximum number of results to return.'),
       searchDepth: z.enum(['basic', 'advanced']).optional().describe('Depth of the search.'),

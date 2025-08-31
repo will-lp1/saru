@@ -1,17 +1,17 @@
-import { Message } from 'ai';
 import { PreviewMessage, ThinkingMessage } from './message';
-import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
 import { Overview } from './overview';
 import { memo } from 'react';
 import equal from 'fast-deep-equal';
-import { UseChatHelpers } from '@ai-sdk/react';
+import type { UseChatHelpers } from '@ai-sdk/react';
+import { motion } from 'framer-motion';
+import type { ChatMessage } from '@/lib/types';
 
 interface MessagesProps {
   chatId: string;
-  status: UseChatHelpers['status'];
-  messages: Array<Message>;
-  setMessages: UseChatHelpers['setMessages'];
-  reload: UseChatHelpers['reload'];
+  status: UseChatHelpers<ChatMessage>['status'];
+  messages: ChatMessage[];
+  setMessages: UseChatHelpers<ChatMessage>['setMessages'];
+  regenerate: UseChatHelpers<ChatMessage>['regenerate'];
   isReadonly: boolean;
   isArtifactVisible: boolean;
 }
@@ -21,11 +21,12 @@ function PureMessages({
   status,
   messages,
   setMessages,
-  reload,
+  regenerate,
   isReadonly,
 }: MessagesProps) {
-  const [messagesContainerRef, messagesEndRef] =
-    useScrollToBottom<HTMLDivElement>();
+  // Use simple refs for now - can be enhanced with custom hook later
+  const messagesContainerRef = null;
+  const messagesEndRef = null;
 
   return (
     <div
@@ -34,25 +35,24 @@ function PureMessages({
     >
       {messages.length === 0 && <Overview />}
 
-      {messages.map((message, index) => {
-        return (
-          <PreviewMessage
-            key={message.id}
-            chatId={chatId}
-            message={message}
-            isLoading={status === 'streaming' && messages.length - 1 === index}
-            setMessages={setMessages}
-            reload={reload}
-            isReadonly={isReadonly}
-          />
-        );
-      })}
+      {messages.map((message, index) => (
+        <PreviewMessage
+          key={message.id}
+          chatId={chatId}
+          message={message}
+          isLoading={status === 'streaming' && messages.length - 1 === index}
+          setMessages={setMessages}
+          regenerate={regenerate}
+          isReadonly={isReadonly}
+          requiresScrollPadding={index === messages.length - 1}
+        />
+      ))}
 
       {status === 'submitted' &&
         messages.length > 0 &&
         messages[messages.length - 1].role === 'user' && <ThinkingMessage />}
 
-      <div
+      <motion.div
         ref={messagesEndRef}
         className="shrink-0 min-w-[24px] min-h-[24px]"
       />

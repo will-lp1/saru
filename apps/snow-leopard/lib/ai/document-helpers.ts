@@ -1,4 +1,5 @@
-import { smoothStream, streamText, type DataStreamWriter } from 'ai';
+import { smoothStream, streamText, type UIMessageStreamWriter } from 'ai';
+import type { ChatMessage } from '@/lib/types';
 import { myProvider } from '@/lib/ai/providers';
 
 export async function createTextDocument({
@@ -6,7 +7,7 @@ export async function createTextDocument({
   dataStream,
 }: {
   title: string;
-  dataStream: DataStreamWriter;
+  dataStream: UIMessageStreamWriter<ChatMessage>;
 }) {
   const { fullStream } = streamText({
     model: myProvider.languageModel('chat-model-large'),
@@ -18,7 +19,11 @@ export async function createTextDocument({
 
   for await (const delta of fullStream) {
     if (delta.type === 'text-delta') {
-      dataStream.writeData({ type: 'text-delta', content: delta.textDelta });
+      dataStream.write({
+        type: 'data-textDelta',
+        data: delta.text,
+        transient: true,
+      });
     }
   }
 }
@@ -30,7 +35,7 @@ export async function updateTextDocument({
 }: {
   document: { content: string };
   description: string;
-  dataStream: DataStreamWriter;
+  dataStream: UIMessageStreamWriter<ChatMessage>;
 }): Promise<string> {
   let draftContent = '';
 
@@ -42,7 +47,7 @@ Do not include any commentary. Never use Tables.
       `.trim(),
       experimental_transform: smoothStream({ chunking: 'line' }),
       prompt: description,
-      experimental_providerMetadata: {
+      providerOptions: {
         openai: {
           prediction: {
             type: 'content',
@@ -56,12 +61,13 @@ Do not include any commentary. Never use Tables.
       const { type } = delta;
 
       if (type === 'text-delta') {
-        const { textDelta } = delta;
+        const { text } = delta;
 
-        draftContent += textDelta;
-        dataStream.writeData({
-          type: 'text-delta',
-          content: textDelta,
+        draftContent += text;
+        dataStream.write({
+          type: 'data-textDelta',
+          data: text,
+          transient: true,
         });
       }
     }

@@ -7,7 +7,7 @@ import { useDocument } from '@/hooks/use-document';
 
 export type DataStreamDelta = {
   type:
-    | 'text-delta'
+    | 'text'
     | 'title'
     | 'id'
     | 'clear'
@@ -17,7 +17,6 @@ export type DataStreamDelta = {
   content: string;
 };
 
-// Define interface for metadata - remove suggestion fields
 interface StreamMetadata {
   originalContent?: string; 
   [key: string]: any;
@@ -25,15 +24,16 @@ interface StreamMetadata {
 
 export function DataStreamHandler({ id }: { id: string }) {
   const router = useRouter();
-  const { data: dataStream } = useChat({ id });
+  const chat = useChat({ id });
   const { document, setDocument } = useDocument();
   const lastProcessedIndex = useRef(-1);
 
   useEffect(() => {
-    if (!dataStream?.length) return;
+    const stream = (chat as any).data as any[] | undefined;
+    if (!stream?.length) return;
 
-    const newDeltas = dataStream.slice(lastProcessedIndex.current + 1);
-    lastProcessedIndex.current = dataStream.length - 1;
+    const newDeltas = stream.slice(lastProcessedIndex.current + 1);
+    lastProcessedIndex.current = stream.length - 1;
 
     (newDeltas as DataStreamDelta[]).forEach((delta: DataStreamDelta) => {
       setDocument((currentDocument) => {
@@ -47,7 +47,7 @@ export function DataStreamHandler({ id }: { id: string }) {
         }
 
         switch (delta.type) {
-          case 'text-delta':
+          case 'text':
             if (typeof window !== 'undefined' && currentDocument.documentId) {
               window.dispatchEvent(
                 new CustomEvent('editor:stream-text', {
@@ -120,7 +120,7 @@ export function DataStreamHandler({ id }: { id: string }) {
         }
       });
     });
-  }, [dataStream, setDocument, document, router]);
+  }, [chat, setDocument, document, router]);
 
   return null;
 }

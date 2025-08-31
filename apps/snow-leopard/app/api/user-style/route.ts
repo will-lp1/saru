@@ -22,13 +22,13 @@ export async function POST(request: Request) {
       system: 'You are an expert writing assistant.',
       prompt: analysisPrompt,
       temperature: 0.3,
-      maxTokens: 150,
+      maxOutputTokens: 150,
     });
 
     let summary = '';
     for await (const delta of fullStream) {
-      if (delta.type === 'text-delta') {
-        summary += delta.textDelta;
+      if (delta.type === 'text') {
+        summary += delta.text;
       }
     }
 

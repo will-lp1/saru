@@ -1,11 +1,4 @@
 'use client';
-
-import type {
-  Attachment,
-  ChatRequestOptions,
-  CreateMessage,
-  Message,
-} from 'ai';
 import cx from 'classnames';
 import type React from 'react';
 import {
@@ -21,17 +14,16 @@ import {
 import { toast } from 'sonner';
 import { useLocalStorage, useWindowSize } from 'usehooks-ts';
 import { MentionsInput, Mention, type SuggestionDataItem, type MentionsInputProps } from 'react-mentions';
+import type { UseChatHelpers } from '@ai-sdk/react';
+import type { Attachment, ChatMessage } from '@/lib/types';
 
-import { sanitizeUIMessages } from '@/lib/utils';
-
-import { ArrowUpIcon, StopIcon, FileIcon } from '../icons';
+import { ArrowUpIcon, StopIcon } from '../icons';
 import { Button } from '../ui/button';
-import { Textarea } from '../ui/textarea';
 import { SuggestedActions } from '../suggested-actions';
 import equal from 'fast-deep-equal';
-import { UseChatHelpers, UseChatOptions } from '@ai-sdk/react';
 import { useDocument } from '@/hooks/use-document';
-import { cn, generateUUID } from '@/lib/utils';
+import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
+import { cn, generateUUID, sanitizeUIMessages } from '@/lib/utils';
 
 interface DocumentSuggestion extends SuggestionDataItem {
   id: string;
@@ -130,22 +122,20 @@ function PureMultimodalInput({
   messages,
   setMessages,
   append,
-  handleSubmit,
   className,
   confirmedMentions,
   onMentionsChange,
 }: {
   chatId: string;
-  input: UseChatHelpers['input'];
-  setInput: UseChatHelpers['setInput'];
-  status: UseChatHelpers['status'];
+  input: string;
+  setInput: Dispatch<SetStateAction<string>>;
+  status: UseChatHelpers<ChatMessage>['status'];
   stop: () => void;
   attachments: Array<Attachment>;
   setAttachments: Dispatch<SetStateAction<Array<Attachment>>>;
-  messages: Array<Message>;
-  setMessages: Dispatch<SetStateAction<Array<Message>>>;
-  append: UseChatHelpers['append'];
-  handleSubmit: UseChatHelpers['handleSubmit'];
+  messages: Array<ChatMessage>;
+  setMessages: UseChatHelpers<ChatMessage>['setMessages'];
+  append: UseChatHelpers<ChatMessage>['sendMessage'];
   className?: string;
   confirmedMentions: MentionedDocument[];
   onMentionsChange: (mentions: MentionedDocument[]) => void;
@@ -162,19 +152,29 @@ function PureMultimodalInput({
   const [inputValue, setInputValue] = useState(input);
   const [markupValue, setMarkupValue] = useState('');
 
+  // Use the scroll hook for auto-scroll functionality
+  const { isAtBottom, scrollToBottom } = useScrollToBottom();
+
   const [localStorageInput, setLocalStorageInput] = useLocalStorage('input', '');
+
   useEffect(() => {
-    const initialVal = localStorageInput || '';
+    const initialVal = localStorageInput || input || '';
     setInputValue(initialVal);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    setInput(inputValue);
     setLocalStorageInput(inputValue);
     const mentions = parseMentionsFromMarkup(markupValue);
     onMentionsChange(mentions);
-  }, [inputValue, markupValue, setInput, setLocalStorageInput, onMentionsChange]);
+  }, [inputValue, markupValue, setLocalStorageInput, onMentionsChange]);
+
+  // Sync with parent input prop changes
+  useEffect(() => {
+    if (input !== inputValue) {
+      setInputValue(input);
+    }
+  }, [input]);
 
   const parseMentionsFromMarkup = (markup: string): MentionedDocument[] => {
     const mentionRegex = /@\[([^)]+)\]\\((\\S+)\\)/g;
@@ -194,6 +194,7 @@ function PureMultimodalInput({
   ) => {
     setInputValue(newValue);
     setMarkupValue(newPlainTextValue);
+    setInput(newValue); // Sync with parent's input state
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -212,17 +213,30 @@ function PureMultimodalInput({
       contextData.mentionedDocumentIds = confirmedMentions.map(doc => doc.id);
     }
     
-    const options: ChatRequestOptions = {
-      experimental_attachments: attachments,
-      data: contextData,
+    // Create message with parts array for AI SDK v5
+    const message = {
+      id: generateUUID(),
+      role: 'user' as const,
+      parts: [
+        ...attachments.map((attachment) => ({
+          type: 'file' as const,
+          url: attachment.url,
+          name: attachment.name,
+          mediaType: attachment.contentType,
+        })),
+        {
+          type: 'text' as const,
+          text: inputValue,
+        },
+      ],
     };
     
-    handleSubmit(undefined, options);
+    append(message);
 
     setAttachments([]);
     setInputValue('');
     setMarkupValue('');
-    onMentionsChange([]); // Clear confirmed mentions in parent
+    onMentionsChange([]);
 
     if (width && width > 768) {
       mentionInputRef.current?.focus();
@@ -231,7 +245,6 @@ function PureMultimodalInput({
     attachments,
     currentDoc.documentId,
     confirmedMentions,
-    handleSubmit,
     setAttachments,
     onMentionsChange,
     width,
@@ -430,7 +443,7 @@ function PureStopButton({
   setMessages,
 }: {
   stop: () => void;
-  setMessages: Dispatch<SetStateAction<Array<Message>>>;
+  setMessages: UseChatHelpers<ChatMessage>['setMessages'];
 }) {
   return (
     <Button
@@ -466,7 +479,7 @@ function PureSendButton({
         event.preventDefault();
         submitForm();
       }}
-      disabled={input.trim().length === 0 || uploadQueue.length > 0} // Check input.trim()
+      disabled={(input || '').trim().length === 0 || uploadQueue.length > 0}
     >
       <ArrowUpIcon size={14} />
     </Button>

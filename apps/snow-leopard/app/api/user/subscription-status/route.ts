@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/app/(auth)/auth'; // Use the aliased path
+import { getSession } from '@/app/(auth)/auth';
 import { getActiveSubscriptionByUserId, unpublishAllDocumentsByUserId } from '@/lib/db/queries';
 
 export const dynamic = 'force-dynamic'; // Ensure fresh data on each request
