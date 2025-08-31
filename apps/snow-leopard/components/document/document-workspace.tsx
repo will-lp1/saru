@@ -8,7 +8,7 @@ import { Loader2 } from 'lucide-react';
 import type { Document } from '@snow-leopard/db';
 import { generateUUID } from '@/lib/utils';
 import { DocumentActions } from '@/components/document/actions';
-import { VersionHeader } from '@/components/document/version-header';
+import { VersionRail } from '@/components/document/version-rail';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Input } from '../ui/input';
@@ -20,6 +20,7 @@ import type { User } from '@/lib/auth';
 import { PublishSettingsMenu } from '@/components/publish-settings-menu';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useDocumentVersions } from '@/hooks/use-document-versions';
 
 const Editor = dynamic(() => import('@/components/document/editor').then(mod => mod.Editor), {
   ssr: false,
@@ -56,6 +57,7 @@ export function AlwaysVisibleArtifact({
   const [saveState, setSaveState] = useState<SaveStatus>('idle');
   const { document, setDocument } = useDocument();
   const [isCreatingDocument, setIsCreatingDocument] = useState(false);
+  const [newDocumentTitle, setNewDocumentTitle] = useState('');
   const [isRenamingDocument, setIsRenamingDocument] = useState(false);
 
   const [isPending, startTransition] = useTransition();
@@ -64,10 +66,36 @@ export function AlwaysVisibleArtifact({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'edit' | 'diff'>('edit');
 
-  const [documents, setDocuments] = useState<Document[]>(initialDocuments);
-  const [currentVersionIndex, setCurrentVersionIndex] = useState<number>(initialDocuments.length > 0 ? initialDocuments.length - 1 : -1);
+  const { versions, isLoading: versionsLoading, mutate: mutateVersions, refresh: refreshVersions } = useDocumentVersions(initialDocumentId, user?.id);
+  const [documents, setDocuments] = useState<Document[]>(versions);
 
-  // Inline document management functions
+  const [currentVersionIndex, setCurrentVersionIndex] = useState<number>(versions.length > 0 ? versions.length - 1 : -1);
+
+  useEffect(() => {
+    const wasAtLatest =
+      currentVersionIndex === -1 || currentVersionIndex === documents.length - 1;
+
+    if (versions.length === 0) {
+      setDocuments([]);
+      setCurrentVersionIndex(-1);
+      return;
+    }
+
+    const prevLast = documents[documents.length - 1];
+    const nextLast = versions[versions.length - 1];
+    const prevTs = prevLast?.updatedAt ?? prevLast?.createdAt;
+    const nextTs = nextLast?.updatedAt ?? nextLast?.createdAt;
+    const shouldReplace = !prevTs || !nextTs || new Date(nextTs) >= new Date(prevTs);
+
+    if (!shouldReplace) return;
+
+    setDocuments(versions);
+    if (wasAtLatest || currentVersionIndex >= versions.length) {
+      setCurrentVersionIndex(versions.length - 1);
+    }
+  }, [versions]);
+
+
   const renameDocument = async (newTitle: string) => {
     if (isRenamingDocument || !document.documentId || document.documentId === 'init') return;
 
@@ -180,6 +208,7 @@ export function AlwaysVisibleArtifact({
     }
   };
 
+
   const currentDocument = useMemo(() => {
     if (currentVersionIndex >= 0 && currentVersionIndex < documents.length) {
       return documents[currentVersionIndex];
@@ -195,35 +224,34 @@ export function AlwaysVisibleArtifact({
   }, [documents]);
 
   useEffect(() => {
-    startTransition(() => {
-        const docs = initialDocuments || [];
-        setDocuments(docs);
-        const initialIndex = docs.length > 0 ? docs.length - 1 : -1;
-        setCurrentVersionIndex(initialIndex);
-        setMode('edit');
+    const docs = initialDocuments || [];
+    setDocuments(docs);
+    const initialIndex = docs.length > 0 ? docs.length - 1 : -1;
+    setCurrentVersionIndex(initialIndex);
+    setMode('edit');
 
-        const docToUse = docs[initialIndex];
+    const docToUse = docs[initialIndex];
 
-        if (docToUse) {
-            setDocument({
-                documentId: docToUse.id,
-                title: docToUse.title,
-                content: docToUse.content ?? '',
-                status: 'idle'
-            });
-            setNewTitle(docToUse.title);
-        } else if (initialDocumentId === 'init' || showCreateDocumentForId) {
-            setDocument({
-                documentId: 'init',
-                title: 'Document',
-                content: '',
-                status: 'idle'
-            });
-            setNewTitle('Document');
-        }
-    });
+    if (docToUse) {
+      setDocument({
+        documentId: docToUse.id,
+        title: docToUse.title,
+        content: docToUse.content ?? '',
+        status: 'idle',
+      });
+      setNewTitle(docToUse.title);
+    } else if (initialDocumentId === 'init' || showCreateDocumentForId) {
+      setDocument({
+        documentId: 'init',
+        title: 'Document',
+        content: '',
+        status: 'idle',
+      });
+      setNewTitle('Document');
+    }
+  }, []);
 
-  }, [initialDocumentId, initialDocuments, setNewTitle, startTransition, setDocument]);
+  // Removed automatic navigation to latest document for a smoother, predictable UX. Users now stay on the /documents page unless they explicitly select or create a document.
 
   useEffect(() => {
     const handleDocumentRenamed = (event: CustomEvent) => {
@@ -243,8 +271,70 @@ export function AlwaysVisibleArtifact({
       }
     };
 
-    window.addEventListener('document-renamed', handleDocumentRenamed as EventListener);
-    return () => window.removeEventListener('document-renamed', handleDocumentRenamed as EventListener);
+    const handleVersionFork = async (event: CustomEvent) => {
+      const { originalDocumentId, versionIndex, forkFromTimestamp } = event.detail;
+      
+      if (originalDocumentId !== document.documentId) return;
+      
+      if (
+        typeof versionIndex !== 'number' ||
+        versionIndex < 0 ||
+        versionIndex >= documents.length - 1 
+      ) {
+        toast.error('Cannot fork from current version or invalid version');
+        return;
+      }
+      if (!forkFromTimestamp) {
+        toast.error('Missing fork timestamp');
+        return;
+      }
+
+      console.log('[DocumentWorkspace] Handling version fork from index', versionIndex, 'timestamp', forkFromTimestamp);
+      
+      try {
+        // Get the current document title for naming the fork
+        const currentDoc = documents[documents.length - 1];
+        const forkTitle = `${currentDoc?.title || 'Document'} (Fork)`;
+        
+        const response = await fetch('/api/document', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'fork',
+            originalDocumentId,
+            forkFromTimestamp,
+            versionIndex,
+            newTitle: forkTitle,
+          }),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          throw new Error(`Fork failed: ${errorData.error || response.statusText}`);
+        }
+        
+        const forkResult = await response.json();
+        console.log('[DocumentWorkspace] Fork successful:', forkResult);
+        
+        // Navigate to the new forked document
+        toast.success(`Forked to new document: ${forkTitle}`);
+        const newId = forkResult.newDocumentId ?? forkResult.documentId ?? forkResult.id;
+        router.push(`/documents/${newId}`);
+        
+      } catch (error: any) {
+        console.error('[DocumentWorkspace] Version fork failed:', error);
+        toast.error(`Failed to fork document: ${error.message}`);
+      }
+    };
+
+    window.addEventListener('document-renamed', handleDocumentRenamed as unknown as EventListener);
+    window.addEventListener('version-fork', handleVersionFork as unknown as EventListener);
+    
+
+    return () => {
+      window.removeEventListener('document-renamed', handleDocumentRenamed as unknown as EventListener);
+      window.removeEventListener('version-fork', handleVersionFork as unknown as EventListener);
+    };
   }, [newTitle, editingTitle, setDocuments, document.documentId]);
 
   const handleDocumentUpdate = (updatedFields: Partial<Document>) => {
@@ -326,6 +416,12 @@ export function AlwaysVisibleArtifact({
     });
   }, [documents, mode, startTransition]);
 
+  const handleVersionChangeByIndex = useCallback((index: number) => {
+    if (index < 0 || index >= documents.length) return;
+    setCurrentVersionIndex(index);
+    setMode(index === documents.length - 1 ? 'edit' : 'diff');
+  }, [documents.length]);
+
   const getContentForVersion = useCallback((index: number): string => {
     if (!documents || index < 0 || index >= documents.length) return '';
     return documents[index].content ?? '';
@@ -347,6 +443,28 @@ export function AlwaysVisibleArtifact({
     }
   }, [isCreatingDocument, createDocument]);
 
+  const handleCreateNewDocument = useCallback(async () => {
+    if (isCreatingDocument) return;
+
+    const trimmed = newDocumentTitle.trim();
+    if (!trimmed) {
+      toast.error('Document title cannot be empty');
+      return;
+    }
+
+    try {
+      await createDocument({
+        title: trimmed,
+        content: '',
+        chatId: null,
+        navigateAfterCreate: true,
+      });
+    } catch (error) {
+      console.error('Error creating new document:', error);
+      toast.error('Failed to create document');
+    }
+  }, [isCreatingDocument, newDocumentTitle, createDocument]);
+
   const handleCreateDocumentFromEditor = useCallback(async (initialContent: string) => {
       if (isCreatingDocument || initialDocumentId !== 'init') return;
       const newDocId = generateUUID();
@@ -364,7 +482,12 @@ export function AlwaysVisibleArtifact({
       }
   }, [isCreatingDocument, initialDocumentId, createDocument]);
 
-  const isCurrentVersion = useMemo(() => currentVersionIndex === documents.length - 1, [currentVersionIndex, documents]);
+  const isCurrentVersion = useMemo(() => {
+    if (documents.length === 0) {
+      return initialDocumentId === 'init' ? true : undefined;
+    }
+    return currentVersionIndex === documents.length - 1;
+  }, [currentVersionIndex, documents, initialDocumentId]);
 
   const editorContent = useMemo(() => {
       if (initialDocumentId === 'init' && !showCreateDocumentForId) {
@@ -389,8 +512,7 @@ export function AlwaysVisibleArtifact({
           <SidebarTrigger />
         </div>
 
-        <div className="flex flex-col items-center justify-center h-full gap-8 px-4 text-muted-foreground">
-          {/* Mini preview card */}
+        <div className="flex flex-col items-center justify-center h-full gap-8 px-4 text-muted-foreground"> 
           <Card className="w-44 h-32 sm:w-52 sm:h-36 md:w-56 md:h-40 border border-border shadow-sm overflow-hidden bg-background">
             <div className="h-5 bg-muted flex items-center px-2 text-[9px] text-muted-foreground/80 font-mono gap-1">
               <Skeleton className="h-2.5 w-3/5" />
@@ -402,13 +524,11 @@ export function AlwaysVisibleArtifact({
             </div>
           </Card>
 
-          {/* Heading + description */}
           <div className="text-center">
             <h3 className="text-lg font-medium mb-1 text-foreground ">Document Not Found</h3>
             <p className="text-sm">Create a new document?</p>
           </div>
 
-          {/* Action buttons */}
           <div className="flex flex-col gap-4 w-full max-w-md">
             <Button
               size="sm"
@@ -426,6 +546,68 @@ export function AlwaysVisibleArtifact({
               onClick={() => router.push('/documents')}
             >
               Cancel
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    initialDocumentId === 'init' &&
+    !versionsLoading &&
+    versions.length === 0 &&
+    documents.length === 0
+  ) {
+    return (
+      <div className="flex flex-col h-dvh bg-background">
+        <div className="flex justify-between items-center border-b px-3 h-[45px]">
+          <SidebarTrigger />
+        </div>
+
+        <div className="flex flex-col items-center justify-center h-full gap-8 px-4 text-muted-foreground">
+          <Card className="w-44 h-32 sm:w-52 sm:h-36 md:w-56 md:h-40 border border-border shadow-sm overflow-hidden bg-background">
+            <div className="h-5 bg-muted flex items-center px-2 text-[9px] text-muted-foreground/80 font-mono gap-1">
+              <Skeleton className="h-2.5 w-3/5" />
+            </div>
+            <div className="p-3 space-y-1">
+              <Skeleton className="h-2.5 w-2/3" />
+              <Skeleton className="h-2.5 w-full" />
+              <Skeleton className="h-2.5 w-5/6" />
+            </div>
+          </Card>
+
+          <div className="text-center space-y-1">
+            <h3 className="text-lg font-medium text-foreground">Create a new document</h3>
+            <p className="text-sm">Give your document a name to get started.</p>
+          </div>
+
+          <div className="flex flex-col gap-4 w-full max-w-md">
+            <Input
+              value={newDocumentTitle}
+              onChange={(e) => setNewDocumentTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleCreateNewDocument();
+                }
+              }}
+              placeholder="Document title"
+              className="w-full"
+              aria-label="New document title"
+            />
+            <Button
+              size="sm"
+              variant="default"
+              className="w-full"
+              onClick={handleCreateNewDocument}
+              disabled={isCreatingDocument}
+            >
+              {isCreatingDocument ? (
+                <Loader2 className="size-4 animate-spin mx-auto" />
+              ) : (
+                'Create Document'
+              )}
             </Button>
           </div>
         </div>
@@ -471,16 +653,11 @@ export function AlwaysVisibleArtifact({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           {documents && documents.length > 0 && (
             <DocumentActions
               content={editorContent}
-              latestContent={latestDocument?.content || ''}
-              documentId={editorDocumentId}
-              isSaving={saveState === 'saving'}
-              handleVersionChange={handleVersionChange}
-              currentVersionIndex={currentVersionIndex}
-              isCurrentVersion={isCurrentVersion}
+              saveStatus={saveState}
             />
           )}
           {latestDocument && (
@@ -496,14 +673,14 @@ export function AlwaysVisibleArtifact({
       </div>
       
       <div className="bg-background text-foreground dark:bg-black dark:text-white h-full overflow-y-auto !max-w-full items-center relative">
-        {!isCurrentVersion && documents && documents.length > 1 && (
-          <VersionHeader
-            key={`${currentDocument?.id}-${currentVersionIndex}`}
-            currentVersionIndex={currentVersionIndex}
-            documents={documents}
-            handleVersionChange={handleVersionChange}
-          />
-        )}
+        <VersionRail
+          versions={documents}
+          currentIndex={currentVersionIndex}
+          onIndexChange={handleVersionChangeByIndex}
+          baseDocumentId={editorDocumentId}
+          isLoading={versionsLoading}
+          refreshVersions={refreshVersions}
+        />
 
         <div className="px-8 py-6 mx-auto max-w-3xl">
              {isPending ? (
@@ -511,7 +688,7 @@ export function AlwaysVisibleArtifact({
              ) : (
                  <Suspense fallback={<EditorSkeleton />}>
                      <Editor
-                        key={editorDocumentId}
+                        key={`${editorDocumentId}-${currentVersionIndex}`}
                         content={editorContent}
                         status={'idle'}
                         isCurrentVersion={isCurrentVersion}

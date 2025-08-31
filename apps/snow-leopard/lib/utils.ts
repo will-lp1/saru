@@ -239,3 +239,232 @@ export function getDocumentTimestampByIndex(
 
   return documents[index].createdAt;
 }
+
+interface MessageContent {
+  type: 'text' | 'tool_call' | 'tool_result';
+  content: any;
+  order: number;
+}
+
+export function parseMessageContent(content: any): MessageContent[] {
+  if (typeof content === 'string') {
+    try {
+      // Try to parse as JSON first
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item, index) => {
+          // Normalize type names
+          const type = (item.type === 'tool-call' ? 'tool_call' : 
+                       item.type === 'tool-result' ? 'tool_result' : 
+                       item.type || 'text') as MessageContent['type'];
+          
+          // For tool results, ensure proper structure
+          if (type === 'tool_result') {
+            return {
+              type,
+              content: {
+                type: 'tool_result',
+                toolCallId: item.toolCallId || item.content?.toolCallId,
+                toolName: item.toolName || item.content?.toolName,
+                result: item.result || item.content?.result
+              },
+              order: index
+            };
+          }
+          
+          // For tool calls, ensure proper structure
+          if (type === 'tool_call') {
+            return {
+              type,
+              content: {
+                type: 'tool_call',
+                toolCallId: item.toolCallId || item.content?.toolCallId,
+                toolName: item.toolName || item.content?.toolName,
+                args: item.args || item.content?.args
+              },
+              order: index
+            };
+          }
+          
+          // For text content
+          return {
+            type,
+            content: item.text || item.content || item,
+            order: index
+          };
+        });
+      }
+      // If parsed but not an array, treat as single text content
+      return [{
+        type: 'text',
+        content: parsed,
+        order: 0,
+      }];
+    } catch {
+      // If not valid JSON, treat as plain text
+      return [{
+        type: 'text',
+        content: content,
+        order: 0,
+      }];
+    }
+  }
+
+  if (Array.isArray(content)) {
+    return content.map((item, index) => {
+      // Normalize type names
+      const type = (item.type === 'tool-call' ? 'tool_call' : 
+                   item.type === 'tool-result' ? 'tool_result' : 
+                   item.type || 'text') as MessageContent['type'];
+      
+      // For tool results, ensure proper structure
+      if (type === 'tool_result') {
+        return {
+          type,
+          content: {
+            type: 'tool_result',
+            toolCallId: item.toolCallId || item.content?.toolCallId,
+            toolName: item.toolName || item.content?.toolName,
+            result: item.result || item.content?.result
+          },
+          order: index
+        };
+      }
+      
+      // For tool calls, ensure proper structure
+      if (type === 'tool_call') {
+        return {
+          type,
+          content: {
+            type: 'tool_call',
+            toolCallId: item.toolCallId || item.content?.toolCallId,
+            toolName: item.toolName || item.content?.toolName,
+            args: item.args || item.content?.args
+          },
+          order: index
+        };
+      }
+      
+      // For text content
+      return {
+        type,
+        content: item.text || item.content || item,
+        order: index
+      };
+    });
+  }
+
+  // If object or other type, wrap in array
+  return [{
+    type: 'text',
+    content: content,
+    order: 0,
+  }];
+}
+
+// IndexedDB utilities for caching document versions
+const DB_NAME = 'snow-leopard-cache';
+const DB_VERSION = 1;
+const VERSIONS_STORE = 'document-versions';
+
+interface CachedVersion {
+  documentId: string;
+  versions: any[];
+  timestamp: number;
+  userId: string;
+}
+
+class VersionCache {
+  private db: IDBDatabase | null = null;
+
+  async init(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve();
+      };
+      
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(VERSIONS_STORE)) {
+          db.createObjectStore(VERSIONS_STORE, { keyPath: 'documentId' });
+        }
+      };
+    });
+  }
+
+  async getVersions(documentId: string, userId: string): Promise<any[] | null> {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([VERSIONS_STORE], 'readonly');
+      const store = transaction.objectStore(VERSIONS_STORE);
+      const request = store.get(documentId);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const cached: CachedVersion | undefined = request.result;
+        if (cached && cached.userId === userId) {
+          // Check if cache is still valid (5 minutes)
+          const isExpired = Date.now() - cached.timestamp > 5 * 60 * 1000;
+          if (!isExpired) {
+            resolve(cached.versions);
+            return;
+          }
+        }
+        resolve(null);
+      };
+    });
+  }
+
+  async setVersions(documentId: string, versions: any[], userId: string): Promise<void> {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([VERSIONS_STORE], 'readwrite');
+      const store = transaction.objectStore(VERSIONS_STORE);
+      const request = store.put({
+        documentId,
+        versions,
+        timestamp: Date.now(),
+        userId
+      });
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  }
+
+  async invalidateVersions(documentId: string): Promise<void> {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([VERSIONS_STORE], 'readwrite');
+      const store = transaction.objectStore(VERSIONS_STORE);
+      const request = store.delete(documentId);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  }
+
+  async clearAll(): Promise<void> {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([VERSIONS_STORE], 'readwrite');
+      const store = transaction.objectStore(VERSIONS_STORE);
+      const request = store.clear();
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  }
+}
+
+// Export singleton instance
+export const versionCache = new VersionCache();
+}

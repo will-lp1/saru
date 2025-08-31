@@ -1,6 +1,7 @@
 import { Plugin, PluginKey, Transaction, EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { buildContentFromDocument } from './functions'; 
+import { buildContentFromDocument } from './functions';
+import { versionCache } from '@/lib/utils'; 
 
 export const savePluginKey = new PluginKey<SaveState>('save');
 
@@ -21,6 +22,7 @@ interface SavePluginOptions {
   debounceMs?: number;
   initialLastSaved?: Date | null;
   documentId: string; 
+  isCurrentVersion?: () => boolean;
 }
 
 export const INVALID_DOCUMENT_IDS = ["init", "undefined", "null"] as const;
@@ -44,7 +46,9 @@ export function createSaveFunction(currentDocumentIdRef: React.MutableRefObject<
         body: JSON.stringify({
           id: docId,
           content: contentToSave,
+          isDebouncedVersion: true,
         }),
+        keepalive: true,
       });
 
       if (!response.ok) {
@@ -64,13 +68,37 @@ export function createSaveFunction(currentDocumentIdRef: React.MutableRefObject<
 
 export function savePlugin({
   saveFunction,
-  debounceMs = 1500,
+  debounceMs = 5000, 
   initialLastSaved = null,
   documentId,
+  isCurrentVersion = () => true,
 }: SavePluginOptions): Plugin<SaveState> {
-  let debounceTimeout: NodeJS.Timeout | null = null;
+  let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
   let inflightRequest: Promise<any> | null = null;
   let editorViewInstance: EditorView | null = null;
+  let hasInitialized = false;
+  const flushPendingSave = () => {
+    if (!isCurrentVersion()) {
+      if (debounceTimeout) {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = null;
+      }
+      return;
+    }
+    
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout);
+      debounceTimeout = null;
+    }
+    if (editorViewInstance) {
+      const content = buildContentFromDocument(editorViewInstance.state.doc);
+      saveFunction(content)
+        .then(() => {
+          window.dispatchEvent(new CustomEvent('document-updated', { detail: { documentId } }));
+        })
+        .catch((e) => console.warn('[SavePlugin] Flush save failed', e));
+    }
+  };
 
   return new Plugin<SaveState>({
     key: savePluginKey,
@@ -87,6 +115,21 @@ export function savePlugin({
       },
       apply(tr, pluginState, oldState, newState): SaveState {
         const meta = tr.getMeta(savePluginKey);
+
+        if (!hasInitialized) {
+          hasInitialized = true;
+          return pluginState;
+        }
+        
+        if (tr.getMeta('external')) {
+          return pluginState;
+        }
+        
+        if (!isCurrentVersion()) {
+          console.log('[SavePlugin] Skipping all save logic - viewing non-current version');
+          return pluginState;
+        }
+        
         let shouldTriggerSave = false;
         if (meta) {
           if (meta.triggerSave === true) {
@@ -140,6 +183,13 @@ export function savePlugin({
               console.warn('[SavePlugin] Debounce fired, but editor view is not available.');
               return;
           }
+          
+          // Double-check we're still on current version when timeout fires
+          if (!isCurrentVersion()) {
+            console.log('[SavePlugin] Debounce fired but now viewing non-current version. Skipping save.');
+            return;
+          }
+          
           const view = editorViewInstance;
           const currentState = savePluginKey.getState(view.state);
           
@@ -160,9 +210,16 @@ export function savePlugin({
           const contentToSave = buildContentFromDocument(view.state.doc);
 
           inflightRequest = saveFunction(contentToSave)
-            .then(result => {
+            .then(async result => {
               inflightRequest = null;
               console.log('[SavePlugin] Save successful.');
+              try {
+                await versionCache.invalidateVersions(documentId);
+                console.log('[SavePlugin] Invalidated version cache after save');
+                window.dispatchEvent(new CustomEvent('document-updated', { detail: { documentId } }));
+              } catch(err){
+                console.warn('[SavePlugin] Cache invalidation failed', err);
+              }
               setSaveStatus(view, { 
                   status: 'saved',
                   lastSaved: result?.updatedAt ? new Date(result.updatedAt) : new Date(),
@@ -192,12 +249,26 @@ export function savePlugin({
     view(editorView) {
        editorViewInstance = editorView;
        console.log(`[SavePlugin] View created for documentId: ${documentId}`);
+
+       const handleVisibility = () => {
+         if (document.hidden) flushPendingSave();
+       };
+       const handleBeforeUnload = () => flushPendingSave();
+       const handlePageHide = () => flushPendingSave();
+
+       document.addEventListener('visibilitychange', handleVisibility);
+       window.addEventListener('beforeunload', handleBeforeUnload);
+       window.addEventListener('pagehide', handlePageHide);
+
        return {
          destroy() {
            editorViewInstance = null;
            if (debounceTimeout) {
              clearTimeout(debounceTimeout);
            }
+           document.removeEventListener('visibilitychange', handleVisibility);
+           window.removeEventListener('beforeunload', handleBeforeUnload);
+           window.removeEventListener('pagehide', handlePageHide);
          }
        };
     }
@@ -227,7 +298,9 @@ export function createForceSaveHandler(currentDocumentIdRef: React.MutableRefObj
         body: JSON.stringify({
           id: currentEditorPropId,
           content: event.detail.content || "",
+          isDebouncedVersion: true,
         }),
+        keepalive: true,
       });
 
       if (!response.ok) {
@@ -246,5 +319,66 @@ export function createForceSaveHandler(currentDocumentIdRef: React.MutableRefObj
       console.error(`[Save Plugin] Force-save failed for ${currentEditorPropId}:`, error);
       throw error;
     }
+  };
+}
+
+/**
+ * Creates a debounced version creation function
+ * This will create a new version after 5 seconds of inactivity
+ */
+export function createDebouncedVersionHandler(currentDocumentIdRef: React.MutableRefObject<string>) {
+  let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+  let lastContent = '';
+
+  return async (content: string) => {
+    const currentEditorPropId = currentDocumentIdRef.current;
+    
+    if (isInvalidDocumentId(currentEditorPropId)) {
+      console.warn("[Debounced Version] Attempted to create version with invalid documentId:", currentEditorPropId);
+      return;
+    }
+
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout);
+    }
+
+    if (content === lastContent) {
+      return;
+    }
+
+    lastContent = content;
+
+    debounceTimeout = setTimeout(async () => {
+      try {
+        console.log(`[Debounced Version] Creating new version for ${currentEditorPropId} after 5s inactivity`);
+        
+        const response = await fetch("/api/document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: currentEditorPropId,
+            content: content,
+            isDebouncedVersion: true,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log(`[Debounced Version] Successfully created new version for ${currentEditorPropId}`);
+        
+        try {
+          await versionCache.invalidateVersions(currentEditorPropId);
+          console.log(`[Debounced Version] Invalidated cache for ${currentEditorPropId}`);
+        } catch (cacheError) {
+          console.warn(`[Debounced Version] Failed to invalidate cache:`, cacheError);
+        }
+        
+      } catch (error) {
+        console.error(`[Debounced Version] Failed to create version for ${currentEditorPropId}:`, error);
+      }
+    }, 5000); 
   };
 } 

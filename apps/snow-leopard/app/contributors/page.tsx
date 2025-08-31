@@ -207,7 +207,7 @@ export default function ContributorsPage() {
           </div>
         </section>
         {/* Repository Stats Section */}
-        <section className="mt-12 pb-8 bg-background">
+        <section className="mt-12 pb-4 bg-background">
           <div className="container mx-auto px-6 md:px-8 lg:px-12">
 
             {/* Skinny Stats Bar */}

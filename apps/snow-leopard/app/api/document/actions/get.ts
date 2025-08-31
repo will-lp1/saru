@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from "@/lib/auth"; // Import Better Auth
 import { headers } from 'next/headers'; // Import headers
-import { getDocumentsById, getCurrentDocumentsByUserId, getPaginatedDocumentsByUserId } from '@/lib/db/queries'; // Import Drizzle queries
+import { getDocumentsById, getCurrentDocumentsByUserId, getPaginatedDocumentsByUserId, getAllDocumentVersions } from '@/lib/db/queries'; // Import Drizzle queries
 
 /**
  * Handles document retrieval operations (GET)
@@ -36,9 +36,16 @@ export async function getDocuments(request: NextRequest) {
         return NextResponse.json([]); 
       }
       
-      // Fetch using Drizzle query (already checks user ID)
-      const documents = await getDocumentsById({ ids: [id], userId: userId }); 
-      return NextResponse.json(documents || []); // Ensure array is returned
+      const includeVersions = searchParams.get('includeVersions') === 'true';
+      
+      if (includeVersions) {
+        console.log(`[Document API - GET] Fetching all versions for document ${id}`);
+        const allVersions = await getAllDocumentVersions({ documentId: id, userId: userId });
+        return NextResponse.json(allVersions || []);
+      } else {
+        const documents = await getDocumentsById({ ids: [id], userId: userId }); 
+        return NextResponse.json(documents || []);
+      }
     } 
     
     // --- Handle pagination ---
