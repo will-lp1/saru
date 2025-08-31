@@ -20,13 +20,25 @@ interface VersionRailProps {
   onIndexChange: (index: number) => void;
   baseDocumentId: string;
   isLoading?: boolean;
+  refreshVersions?: () => void;
 }
 
-export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumentId, isLoading }: VersionRailProps){
+export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumentId, isLoading, refreshVersions }: VersionRailProps){
   const [hoverIndex, setHoverIndex] = React.useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = React.useState<number | null>(null);
   const [pressStart, setPressStart] = React.useState<number | null>(null);
   const [lastClickTime, setLastClickTime] = React.useState<number>(0);
+
+  const lastRefreshRef = React.useRef(0);
+
+  const maybeRefresh = React.useCallback(() => {
+    if (!refreshVersions) return;
+    const now = Date.now();
+    if (now - lastRefreshRef.current > 5000) {
+      refreshVersions();
+      lastRefreshRef.current = now;
+    }
+  }, [refreshVersions]);
 
   const data = React.useMemo(()=>{
     const dmp = new diff_match_patch();
@@ -139,6 +151,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    maybeRefresh();
     if (!versions.length) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -156,6 +169,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    maybeRefresh();
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const fraction = x / rect.width;
@@ -231,6 +245,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
         onPointerMove={handlePointerMove}
         onPointerDown={handlePointerDown}
         onPointerUp={(e) => {
+          maybeRefresh();
           handlePointerUp();
           handleClickArea(e as any);
         }}
@@ -300,3 +315,4 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
     </div>
   );
 }
+

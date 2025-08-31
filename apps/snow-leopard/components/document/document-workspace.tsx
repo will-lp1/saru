@@ -65,26 +65,26 @@ export function AlwaysVisibleArtifact({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'edit' | 'diff'>('edit');
 
-  const { versions: swrVersions, isLoading: versionsLoading, mutate: mutateVersions } = useDocumentVersions(initialDocumentId, user?.id);
-  const [documents, setDocuments] = useState<Document[]>(swrVersions);
+  const { versions, isLoading: versionsLoading, mutate: mutateVersions, refresh: refreshVersions } = useDocumentVersions(initialDocumentId, user?.id);
+  const [documents, setDocuments] = useState<Document[]>(versions);
 
-  const [currentVersionIndex, setCurrentVersionIndex] = useState<number>(swrVersions.length > 0 ? swrVersions.length - 1 : -1);
+  const [currentVersionIndex, setCurrentVersionIndex] = useState<number>(versions.length > 0 ? versions.length - 1 : -1);
 
   useEffect(() => {
     const wasAtLatest =
       currentVersionIndex === -1 || currentVersionIndex === documents.length - 1;
 
-    setDocuments(swrVersions);
+    setDocuments(versions);
 
-    if (swrVersions.length === 0) {
+    if (versions.length === 0) {
       setCurrentVersionIndex(-1);
       return;
     }
 
-    if (wasAtLatest || currentVersionIndex >= swrVersions.length) {
-      setCurrentVersionIndex(swrVersions.length - 1);
+    if (wasAtLatest || currentVersionIndex >= versions.length) {
+      setCurrentVersionIndex(versions.length - 1);
     }
-  }, [swrVersions]);
+  }, [versions]);
 
 
   const renameDocument = async (newTitle: string) => {
@@ -574,6 +574,7 @@ export function AlwaysVisibleArtifact({
           onIndexChange={handleVersionChangeByIndex}
           baseDocumentId={editorDocumentId}
           isLoading={versionsLoading}
+          refreshVersions={refreshVersions}
         />
 
         <div className="px-8 py-6 mx-auto max-w-3xl">
