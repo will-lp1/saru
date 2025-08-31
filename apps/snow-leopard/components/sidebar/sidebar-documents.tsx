@@ -2,7 +2,7 @@
 
 import { isToday, isYesterday, subMonths, subWeeks } from 'date-fns';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import type { User } from '@/lib/auth';
 import { memo, useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -207,31 +207,14 @@ export function SidebarDocuments({ user, initialDocuments }: { user?: User; init
   const hasReachedEnd = lastPage ? !lastPage.hasMore : false;
   const hasEmptyDocuments = paginatedDocumentsData?.every(page => page.documents.length === 0) ?? false;
 
-  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  const pathname = usePathname();
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
-  
+
   useEffect(() => {
     const match = pathname.match(/\/documents\/([^/?]+)/);
     const newActiveId = match ? match[1] : null;
-    
-    if (newActiveId !== activeDocumentId) {
-      setActiveDocumentId(newActiveId);
-    }
-    
-    const updateActiveDocument = () => {
-      const newPathname = window.location.pathname;
-      const newMatch = newPathname.match(/\/documents\/([^/?]+)/);
-      const newId = newMatch ? newMatch[1] : null;
-      
-      setActiveDocumentId(newId);
-    };
-    
-    window.addEventListener('popstate', updateActiveDocument);
-    
-    return () => {
-      window.removeEventListener('popstate', updateActiveDocument);
-    };
-  }, [pathname, activeDocumentId]);
+    setActiveDocumentId(newActiveId);
+  }, [pathname]);
 
   useEffect(() => {
     const handleDocumentCreated = (event: CustomEvent) => {

@@ -57,6 +57,7 @@ export function AlwaysVisibleArtifact({
   const [saveState, setSaveState] = useState<SaveStatus>('idle');
   const { document, setDocument } = useDocument();
   const [isCreatingDocument, setIsCreatingDocument] = useState(false);
+  const [newDocumentTitle, setNewDocumentTitle] = useState('');
   const [isRenamingDocument, setIsRenamingDocument] = useState(false);
 
   const [isPending, startTransition] = useTransition();
@@ -223,35 +224,34 @@ export function AlwaysVisibleArtifact({
   }, [documents]);
 
   useEffect(() => {
-    startTransition(() => {
-        const docs = initialDocuments || [];
-        setDocuments(docs);
-        const initialIndex = docs.length > 0 ? docs.length - 1 : -1;
-        setCurrentVersionIndex(initialIndex);
-        setMode('edit');
+    const docs = initialDocuments || [];
+    setDocuments(docs);
+    const initialIndex = docs.length > 0 ? docs.length - 1 : -1;
+    setCurrentVersionIndex(initialIndex);
+    setMode('edit');
 
-        const docToUse = docs[initialIndex];
+    const docToUse = docs[initialIndex];
 
-        if (docToUse) {
-            setDocument({
-                documentId: docToUse.id,
-                title: docToUse.title,
-                content: docToUse.content ?? '',
-                status: 'idle'
-            });
-            setNewTitle(docToUse.title);
-        } else if (initialDocumentId === 'init' || showCreateDocumentForId) {
-            setDocument({
-                documentId: 'init',
-                title: 'Document',
-                content: '',
-                status: 'idle'
-            });
-            setNewTitle('Document');
-        }
-    });
+    if (docToUse) {
+      setDocument({
+        documentId: docToUse.id,
+        title: docToUse.title,
+        content: docToUse.content ?? '',
+        status: 'idle',
+      });
+      setNewTitle(docToUse.title);
+    } else if (initialDocumentId === 'init' || showCreateDocumentForId) {
+      setDocument({
+        documentId: 'init',
+        title: 'Document',
+        content: '',
+        status: 'idle',
+      });
+      setNewTitle('Document');
+    }
+  }, []);
 
-  }, [initialDocumentId, initialDocuments, setNewTitle, startTransition, setDocument]);
+  // Removed automatic navigation to latest document for a smoother, predictable UX. Users now stay on the /documents page unless they explicitly select or create a document.
 
   useEffect(() => {
     const handleDocumentRenamed = (event: CustomEvent) => {
@@ -443,6 +443,28 @@ export function AlwaysVisibleArtifact({
     }
   }, [isCreatingDocument, createDocument]);
 
+  const handleCreateNewDocument = useCallback(async () => {
+    if (isCreatingDocument) return;
+
+    const trimmed = newDocumentTitle.trim();
+    if (!trimmed) {
+      toast.error('Document title cannot be empty');
+      return;
+    }
+
+    try {
+      await createDocument({
+        title: trimmed,
+        content: '',
+        chatId: null,
+        navigateAfterCreate: true,
+      });
+    } catch (error) {
+      console.error('Error creating new document:', error);
+      toast.error('Failed to create document');
+    }
+  }, [isCreatingDocument, newDocumentTitle, createDocument]);
+
   const handleCreateDocumentFromEditor = useCallback(async (initialContent: string) => {
       if (isCreatingDocument || initialDocumentId !== 'init') return;
       const newDocId = generateUUID();
@@ -524,6 +546,68 @@ export function AlwaysVisibleArtifact({
               onClick={() => router.push('/documents')}
             >
               Cancel
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    initialDocumentId === 'init' &&
+    !versionsLoading &&
+    versions.length === 0 &&
+    documents.length === 0
+  ) {
+    return (
+      <div className="flex flex-col h-dvh bg-background">
+        <div className="flex justify-between items-center border-b px-3 h-[45px]">
+          <SidebarTrigger />
+        </div>
+
+        <div className="flex flex-col items-center justify-center h-full gap-8 px-4 text-muted-foreground">
+          <Card className="w-44 h-32 sm:w-52 sm:h-36 md:w-56 md:h-40 border border-border shadow-sm overflow-hidden bg-background">
+            <div className="h-5 bg-muted flex items-center px-2 text-[9px] text-muted-foreground/80 font-mono gap-1">
+              <Skeleton className="h-2.5 w-3/5" />
+            </div>
+            <div className="p-3 space-y-1">
+              <Skeleton className="h-2.5 w-2/3" />
+              <Skeleton className="h-2.5 w-full" />
+              <Skeleton className="h-2.5 w-5/6" />
+            </div>
+          </Card>
+
+          <div className="text-center space-y-1">
+            <h3 className="text-lg font-medium text-foreground">Create a new document</h3>
+            <p className="text-sm">Give your document a name to get started.</p>
+          </div>
+
+          <div className="flex flex-col gap-4 w-full max-w-md">
+            <Input
+              value={newDocumentTitle}
+              onChange={(e) => setNewDocumentTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleCreateNewDocument();
+                }
+              }}
+              placeholder="Document title"
+              className="w-full"
+              aria-label="New document title"
+            />
+            <Button
+              size="sm"
+              variant="default"
+              className="w-full"
+              onClick={handleCreateNewDocument}
+              disabled={isCreatingDocument}
+            >
+              {isCreatingDocument ? (
+                <Loader2 className="size-4 animate-spin mx-auto" />
+              ) : (
+                'Create Document'
+              )}
             </Button>
           </div>
         </div>
