@@ -23,7 +23,7 @@ import SynonymOverlay from "@/components/synonym-overlay";
 type EditorProps = {
   content: string;
   status: "streaming" | "idle";
-  isCurrentVersion: boolean;
+  isCurrentVersion: boolean | undefined;
   currentVersionIndex: number;
   documentId: string;
   initialLastSaved: Date | null;
@@ -80,7 +80,7 @@ function PureEditor({
   useEffect(() => {
     isCurrentVersionRef.current = isCurrentVersion;
     if (editorRef.current) {
-      editorRef.current.setProps({ editable: () => isCurrentVersion });
+      editorRef.current.setProps({ editable: () => !!isCurrentVersion });
     }
   }, [isCurrentVersion]);
 
@@ -101,7 +101,7 @@ function PureEditor({
         requestInlineSuggestion: (state) =>
           requestInlineSuggestionCallback(state, abortControllerRef, editorRef),
         setActiveFormats,
-        isCurrentVersion: () => isCurrentVersionRef.current,
+        isCurrentVersion: () => !!isCurrentVersionRef.current,
       });
 
       const initialEditorState = EditorState.create({
@@ -171,7 +171,7 @@ function PureEditor({
           requestInlineSuggestion: (state) =>
             requestInlineSuggestionCallback(state, abortControllerRef, editorRef),
           setActiveFormats,
-          isCurrentVersion: () => isCurrentVersionRef.current,
+          isCurrentVersion: () => !!isCurrentVersionRef.current,
         });
 
         const newDoc = buildDocumentFromContent(content);
@@ -201,7 +201,7 @@ function PureEditor({
       }
 
       currentView.setProps({
-        editable: () => isCurrentVersion,
+        editable: () => !!isCurrentVersion,
       });
     }
 

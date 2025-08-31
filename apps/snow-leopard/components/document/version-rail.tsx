@@ -208,6 +208,10 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
       }
       setHoverIndex(null);
     }
+
+    if (isViewingHistory) {
+      commitIndex(versions.length - 1);
+    }
   };
 
   const Tooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: { ts: string; additions: number; deletions: number } }> }) => {

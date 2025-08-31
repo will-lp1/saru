@@ -1,16 +1,17 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { versionCache } from '@/lib/utils';
 import type { Document } from '@snow-leopard/db';
 
 /**
  * Hook to get and mutate the full version history for a document.
- * Uses SWR for revalidation while persisting the cache in IndexedDB
- * via the existing versionCache helper. The SWR key is
- * [`doc-versions`, userId, documentId].
+ * Performs manual fetch + revalidation and persists the cache in IndexedDB
+ * via the existing versionCache helper. Exposes a SWR-like API (mutate/refresh)
+ * but does not depend on SWR.
  */
 export function useDocumentVersions(documentId: string | null, userId?: string | null) {
   const [versions, setVersions] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   /**
    */
@@ -18,7 +19,13 @@ export function useDocumentVersions(documentId: string | null, userId?: string |
     if (!documentId) return [] as Document[];
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/document?id=${encodeURIComponent(documentId)}&includeVersions=true`);
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const res = await fetch(
+        `/api/document?id=${encodeURIComponent(documentId)}&includeVersions=true`,
+        { signal: controller.signal }
+      );
       if (!res.ok) throw new Error('Failed to fetch versions');
       const data = (await res.json()) as Document[];
 
@@ -28,8 +35,14 @@ export function useDocumentVersions(documentId: string | null, userId?: string |
 
       setVersions(data);
       return data;
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        console.warn('[useDocumentVersions] fetch failed', err);
+      }
+      return versions;
     } finally {
       setIsLoading(false);
+      abortRef.current = null;
     }
   }, [documentId, userId]);
 
@@ -50,8 +63,8 @@ export function useDocumentVersions(documentId: string | null, userId?: string |
   useEffect(() => {
     loadFromCache();
     fetchVersions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentId, userId]);
+    return () => abortRef.current?.abort();
+  }, [loadFromCache, fetchVersions]);
 
   /**
    * A mutate helper that mirrors the SWR API we previously used so the rest of
@@ -65,13 +78,16 @@ export function useDocumentVersions(documentId: string | null, userId?: string |
     ) => {
       if (data) {
         setVersions(data);
+        if (documentId && userId) {
+          await versionCache.setVersions(documentId, data, userId).catch(() => {});
+        }
       }
 
       if (options?.revalidate) {
         await fetchVersions();
       }
     },
-    [fetchVersions]
+    [fetchVersions, documentId, userId]
   );
 
   return {

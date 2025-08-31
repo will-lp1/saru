@@ -74,13 +74,21 @@ export function AlwaysVisibleArtifact({
     const wasAtLatest =
       currentVersionIndex === -1 || currentVersionIndex === documents.length - 1;
 
-    setDocuments(versions);
-
     if (versions.length === 0) {
+      setDocuments([]);
       setCurrentVersionIndex(-1);
       return;
     }
 
+    const prevLast = documents[documents.length - 1];
+    const nextLast = versions[versions.length - 1];
+    const prevTs = prevLast?.updatedAt ?? prevLast?.createdAt;
+    const nextTs = nextLast?.updatedAt ?? nextLast?.createdAt;
+    const shouldReplace = !prevTs || !nextTs || new Date(nextTs) >= new Date(prevTs);
+
+    if (!shouldReplace) return;
+
+    setDocuments(versions);
     if (wasAtLatest || currentVersionIndex >= versions.length) {
       setCurrentVersionIndex(versions.length - 1);
     }
@@ -268,6 +276,19 @@ export function AlwaysVisibleArtifact({
       
       if (originalDocumentId !== document.documentId) return;
       
+      if (
+        typeof versionIndex !== 'number' ||
+        versionIndex < 0 ||
+        versionIndex >= documents.length - 1 
+      ) {
+        toast.error('Cannot fork from current version or invalid version');
+        return;
+      }
+      if (!forkFromTimestamp) {
+        toast.error('Missing fork timestamp');
+        return;
+      }
+
       console.log('[DocumentWorkspace] Handling version fork from index', versionIndex, 'timestamp', forkFromTimestamp);
       
       try {
@@ -297,7 +318,8 @@ export function AlwaysVisibleArtifact({
         
         // Navigate to the new forked document
         toast.success(`Forked to new document: ${forkTitle}`);
-        router.push(`/documents/${forkResult.newDocumentId}`);
+        const newId = forkResult.newDocumentId ?? forkResult.documentId ?? forkResult.id;
+        router.push(`/documents/${newId}`);
         
       } catch (error: any) {
         console.error('[DocumentWorkspace] Version fork failed:', error);
@@ -313,7 +335,7 @@ export function AlwaysVisibleArtifact({
       window.removeEventListener('document-renamed', handleDocumentRenamed as unknown as EventListener);
       window.removeEventListener('version-fork', handleVersionFork as unknown as EventListener);
     };
-  }, [newTitle, editingTitle, setDocuments, document.documentId, user?.id, mutateVersions]);
+  }, [newTitle, editingTitle, setDocuments, document.documentId]);
 
   const handleDocumentUpdate = (updatedFields: Partial<Document>) => {
       setDocuments(prevDocs =>
@@ -439,12 +461,11 @@ export function AlwaysVisibleArtifact({
   }, [isCreatingDocument, initialDocumentId, createDocument]);
 
   const isCurrentVersion = useMemo(() => {
-    // When documents haven't loaded yet, default to true for new/forked documents
     if (documents.length === 0) {
-      return true;
+      return initialDocumentId === 'init' ? true : undefined;
     }
     return currentVersionIndex === documents.length - 1;
-  }, [currentVersionIndex, documents]);
+  }, [currentVersionIndex, documents, initialDocumentId]);
 
   const editorContent = useMemo(() => {
       if (initialDocumentId === 'init' && !showCreateDocumentForId) {
