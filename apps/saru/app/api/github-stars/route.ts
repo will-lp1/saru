@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    const response = await fetch('https://api.github.com/repos/will-lp1/snowleopard', {
+    const response = await fetch('https://api.github.com/repos/will-lp1/saru', {
       headers: {
         'Accept': 'application/vnd.github.v3+json',
         'User-Agent': 'SnowLeopard-App',
