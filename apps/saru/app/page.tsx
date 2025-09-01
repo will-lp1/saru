@@ -252,7 +252,7 @@ export default function Home() {
                 className="size-12 rounded-full object-cover"
               />
               <blockquote className="text-lg md:text-xl italic text-muted-foreground max-w-prose leading-relaxed">
-                “I went in expecting slop, but it's actually good. The app looked so good, and it looks legitimately useful.”
+                “I went in expecting slop, but it&apos;s actually good. The app looked so good, and it looks legitimately useful.”
               </blockquote>
               <figcaption className="text-sm text-foreground font-medium flex flex-col items-center">
                 Guillermo Rauch
