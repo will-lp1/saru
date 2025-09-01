@@ -183,7 +183,7 @@ function PureMultimodalInput({
     const initialVal = localStorageInput || '';
     setInputValue(initialVal);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localStorageInput]);
+  }, []);
 
   useEffect(() => {
     setInput(inputValue);
@@ -439,7 +439,7 @@ function PureMultimodalInput({
                 variant="outline"
                 size="sm" 
                 className={cn(
-                  "rounded-full hover:bg-primary hover:text-primary-foreground transition-colors text-sm px-4 py-2 h-auto border-border/60 dark:border-border/40 flex-shrink-0",
+                  "rounded-full hover:bg-primary hover:text-primary-foreground transition-colors text-sm px-4 py-2 h-auto border-border/60 dark:border-border/40 flex-shrink-0 bg-opacity-20 bg-gray-300",
                 )}
                 onClick={() => handleSuggestionClick(prompt.input)}
                 disabled={status !== 'ready'}
