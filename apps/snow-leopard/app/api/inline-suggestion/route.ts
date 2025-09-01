@@ -10,7 +10,13 @@ async function handleInlineSuggestionRequest(
   suggestionLength: 'short' | 'medium' | 'long' = 'medium',
   customInstructions?: string | null,
   writingStyleSummary?: string | null,
-  applyStyle: boolean = true
+  applyStyle: boolean = true,
+  structureInfo?: {
+    trailingNewlinesBefore?: number;
+    leadingNewlinesAfter?: number;
+    prevChar?: string;
+    nextChar?: string;
+  }
 ) {
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
@@ -21,7 +27,7 @@ async function handleInlineSuggestionRequest(
     try {
       console.log("Starting to process inline suggestion stream");
 
-      await streamInlineSuggestion({ contextBefore, contextAfter, fullContent, suggestionLength, customInstructions, writingStyleSummary, applyStyle, write: async (type, content) => {
+      await streamInlineSuggestion({ contextBefore, contextAfter, fullContent, suggestionLength, customInstructions, writingStyleSummary, applyStyle, structureInfo, write: async (type, content) => {
         if (writerClosed) return;
 
         try {
@@ -89,10 +95,10 @@ export async function POST(request: NextRequest) {
     if (!sessionCookie) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const { contextBefore = '', contextAfter = '', fullContent = '', aiOptions = {} } = await request.json();
+    const { contextBefore = '', contextAfter = '', fullContent = '', structureInfo = {}, aiOptions = {} } = await request.json();
     const { suggestionLength, customInstructions, writingStyleSummary, applyStyle } = aiOptions;
 
-    return handleInlineSuggestionRequest(contextBefore, contextAfter, fullContent, suggestionLength, customInstructions, writingStyleSummary, applyStyle);
+    return handleInlineSuggestionRequest(contextBefore, contextAfter, fullContent, suggestionLength, customInstructions, writingStyleSummary, applyStyle, structureInfo);
   } catch (error: any) {
     console.error('Inline suggestion route error:', error);
     return NextResponse.json({ error: error.message || 'An error occurred' }, { status: 400 });
@@ -106,6 +112,7 @@ async function streamInlineSuggestion({
   customInstructions,
   writingStyleSummary,
   applyStyle,
+  structureInfo,
   write
 }: {
   contextBefore: string;
@@ -115,9 +122,15 @@ async function streamInlineSuggestion({
   customInstructions?: string | null;
   writingStyleSummary?: string | null;
   applyStyle: boolean;
+  structureInfo?: {
+    trailingNewlinesBefore?: number;
+    leadingNewlinesAfter?: number;
+    prevChar?: string;
+    nextChar?: string;
+  };
   write: (type: string, content: string) => Promise<void>;
 }) {
-  const prompt = buildPrompt({ contextBefore, contextAfter, suggestionLength, customInstructions, writingStyleSummary, applyStyle });
+  const prompt = buildPrompt({ contextBefore, contextAfter, suggestionLength, customInstructions, writingStyleSummary, applyStyle, structureInfo });
 
   const maxTokens = { short: 20, medium: 50, long: 80 }[suggestionLength || 'medium'];
 
@@ -125,7 +138,7 @@ async function streamInlineSuggestion({
     model: myProvider.languageModel('artifact-model'),
     prompt,
     temperature: 0.4,
-    maxTokens,
+    maxTokens: maxTokens
   });
 
   let suggestionContent = '';
@@ -148,6 +161,12 @@ interface BuildPromptParams {
   customInstructions?: string | null;
   writingStyleSummary?: string | null;
   applyStyle: boolean;
+  structureInfo?: {
+    trailingNewlinesBefore?: number;
+    leadingNewlinesAfter?: number;
+    prevChar?: string;
+    nextChar?: string;
+  };
 }
 
 function buildPrompt({
@@ -157,24 +176,53 @@ function buildPrompt({
   customInstructions,
   writingStyleSummary,
   applyStyle,
+  structureInfo,
 }: BuildPromptParams): string {
-  const contextWindow = 200;
+  const contextWindow = 1000;
+
   const beforeSnippet = contextBefore.slice(-contextWindow);
   const afterSnippet = contextAfter.slice(0, contextWindow);
-  const wordLimitMap = { short: 5, medium: 10, long: 15 } as const;
-  const maxWords = wordLimitMap[suggestionLength] ?? 10;
+  const wordLimitMap = { short: 5, medium: 12, long: 25 } as const;
+  const maxWords = wordLimitMap[suggestionLength] ?? 12;
 
-  const prompt = `You are an expert autocomplete assistant.
+  const trailingNewlinesBefore = structureInfo?.trailingNewlinesBefore ?? 0;
+  const prevChar = structureInfo?.prevChar ?? '';
+  const endsWithSentencePunct = /[.!?]\s*$/.test(beforeSnippet);
+  const atLineStart = trailingNewlinesBefore > 0;
+  const greetingBreak = prevChar === ',' && atLineStart; // e.g., "Hi mate,\n"
+  const mustStartWithCapital = endsWithSentencePunct || atLineStart || greetingBreak;
 
-Rules:
-1. Return ONLY the continuation (no quotes, no line breaks, no thinking or commentary).
-2. Use ${maxWords} words.
-3. No lowercase letters after sentence ending punctuation.
-3. Take the user's writing style and custom instructions into account.
-4. DO NOT generate mid-word continuations, only generate continuations at the end of a word - i.e. don't generate continuations in the middle of a word.
+  const rules: string[] = [];
+  rules.push('Return ONLY the continuation (no quotes, no commentary).');
+  rules.push(`The continuation must be <= ${maxWords} words.`);
+  rules.push('Preserve paragraph structure: if the context ends with blank lines, start a new paragraph; otherwise continue the current sentence.');
+  rules.push('If multiple blank lines indicate a gap, continue after the gap without inventing missing sections.');
+  rules.push('Never start or finish in the middle of a word.');
 
-${customInstructions ? `Extra instruction: ${customInstructions}\n\n` : ''}${applyStyle && writingStyleSummary ? `: ${writingStyleSummary}\n\n` : ''}Context:
-${beforeSnippet}▮${afterSnippet}`;
+  rules.push('If a GUIDANCE section is provided below, follow it EXACTLY.');
+
+  if (applyStyle) {
+    rules.push('Match the user\'s writing style and tone.');
+  }
+
+  rules.push(
+    mustStartWithCapital
+      ? 'The FIRST CHARACTER of the continuation MUST be uppercase.'
+      : 'Keep capitalization consistent with the surrounding text.'
+  );
+
+  const numberedRules = rules.map((r, idx) => `${idx + 1}. ${r}`).join('\n');
+
+  const notes: string[] = [];
+  if (applyStyle && writingStyleSummary) {
+    notes.push(`Writing style summary: ${writingStyleSummary}`);
+  }
+  if (customInstructions) {
+    notes.push(`Extra instruction: ${customInstructions}`);
+  }
+  const notesBlock = notes.length ? `\n\nGUIDANCE:\n${notes.join('\n')}` : '';
+
+  const prompt = `You are an expert autocomplete assistant.\n\nRules:\n${numberedRules}${notesBlock}\n\nContext ("▮" marks cursor position):\n<<<\n${beforeSnippet}▮${afterSnippet}\n>>>`;
 
   return prompt;
 } 
