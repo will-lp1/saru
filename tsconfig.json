@@ -19,7 +19,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./apps/snow-leopard/*"]
+      "@/*": ["./apps/saru/*"]
     }
   },
   "include": [
