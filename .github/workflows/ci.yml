@@ -43,6 +43,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Run build for the snow-leopard app (adjust filter/script if necessary)
+      # Run build for the saru app (adjust filter/script if necessary)
       - name: Run Build Check
-        run: pnpm --filter snow-leopard build 
+        run: pnpm --filter saru build 

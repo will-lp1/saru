@@ -1,0 +1,26 @@
+# Saru
+
+> Tab, Tab, Apply Brilliance – an open-source AI writing tool that seamlessly integrates real-time inline suggestions, style consistency, and document management into a distraction-free writing workflow.
+
+Saru transforms the writing process by placing AI-powered recommendations directly in your text as you type. It refines clarity, grammar, and style without interrupting creative flow. Writers can organize projects, track revisions, and publish content—all within a single interface.
+
+## Core Features
+- [Inline Suggestions](https://www.trysaru.com): Contextual recommendations that appear as you write
+- [Style Consistency](https://www.trysaru.com): Maintain your unique voice with AI-driven edits
+- [Document Management](https://www.trysaru.com/documents): Create, organize, and track revisions in one place
+- [Publishing Tools](https://www.trysaru.com): Publish articles or share links directly from the platform
+
+## Key Pages
+- [Home](https://www.trysaru.com): Feature overview and demo
+- [Login](https://www.trysaru.com/login): Secure authentication
+- [Register](https://www.trysaru.com/register): New user signup
+- [Workspace](https://www.trysaru.com/documents): Main writing environment
+- [Published Content](https://www.trysaru.com/{author}/{slug}): Publicly shared articles (dynamic)
+
+## Developer & Resources
+- [GitHub Repository](https://github.com/will-lp1/saru): Source code, issues, and contributions
+- Previous domain - https://www.cursorforwrit.ing
+
+## Optional
+- [robots.txt](https://www.cursorforwrit.ing/robots.txt): Crawling rules
+- [sitemap.xml](https://www.cursorforwrit.ing/sitemap.xml): Sitemap of public routes
