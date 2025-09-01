@@ -1,13 +1,16 @@
 'use server';
 
 import { generateText, Message } from 'ai';
-import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 
 import {
   getDocumentById,
+  getLatestDocumentByUserId,
   saveDocument,
 } from '@/lib/db/queries';
 import { myProvider } from '@/lib/ai/providers';
+import { getSession, getUser } from '../(auth)/auth';
+import { generateUUID } from '@/lib/utils';
 export async function generateDocumentTitleFromContent({
   content,
 }: {
@@ -53,3 +56,46 @@ export async function updateDocumentContent({
     // saveDocument creates a new version, is_current defaults to true
   });
 } 
+
+export async function createNewDocument() {
+  const session = await getSession();
+  if (!session?.user?.id) { 
+    redirect('/'); 
+  }
+
+  const user = await getUser();
+  if (!user) {
+    redirect('/');
+  }
+
+  const latestDocument = await getLatestDocumentByUserId({ userId: user.id });
+
+  if (latestDocument) {
+    const trimmedContent = (latestDocument.content || '').trim();
+
+    if (
+      latestDocument.title === "Untitled Document" &&
+      trimmedContent === ''
+    ) {
+      console.log(`[Documents] Reusing existing untitled document ${latestDocument.id}`);
+      redirect(`/documents/${latestDocument.id}`);
+    }
+  }
+  const newDocumentId = generateUUID();
+
+  try {
+    await saveDocument({
+      id: newDocumentId,
+      title: 'Untitled Document',
+      content: '',
+      kind: 'text',
+      userId: user.id,
+    });
+
+    console.log(`[Documents Page] Created document ${newDocumentId} for user ${user.id}`);
+  } catch (error) {
+    console.error('[Documents Page] Failed to create document:', error);
+  }
+
+  redirect(`/documents/${newDocumentId}`);
+}

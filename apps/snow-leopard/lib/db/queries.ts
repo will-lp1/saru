@@ -806,6 +806,32 @@ export async function getLatestDocumentById({ id }: { id: string }): Promise<(ty
   }
 }
 
+export async function getLatestDocumentByUserId({ userId }: { userId: string }): Promise<(typeof schema.Document.$inferSelect) | null> {
+  try {
+    if (!userId) {
+      console.warn(`[DB Query - getLatestDocumentByUserId] Invalid user ID provided: ${userId}`);
+      return null;
+    }
+
+    const data = await db
+      .select()
+      .from(schema.Document)
+      .where(eq(schema.Document.userId, userId))
+      .orderBy(desc(schema.Document.createdAt))
+      .limit(1);
+
+    if (!data || data.length === 0) {
+      console.log(`[DB Query - getLatestDocumentByUserId] No documents ${data} found for user: ${userId}`);
+      return null
+    }
+
+    return data[0]; // Return the latest document found
+  } catch (error) {
+    console.error(`[DB Query - getLatestDocumentByUserId] Error fetching latest document for user ${userId}:`, error);
+    return null;
+  }
+}
+
 // --- Subscription Queries --- //
 
 // Define the type for the subscription based on your schema
