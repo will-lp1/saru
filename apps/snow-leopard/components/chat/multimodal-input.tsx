@@ -44,11 +44,16 @@ export interface MentionedDocument {
   title: string;
 }
 
+// feel free to modify starter and follow up prompts according to you
 const STARTER_PROMPTS = [
-  { key: 1, input: "Life-changing moment", value: "Life-changing moment" },
-  { key: 2, input: "Letter to future self", value: "Letter to future self" },
-  { key: 3, input: "World without tech", value: "World without tech" },
+  { key: 1, input: "My favorite memory", value: "Favorite memory" },
+  { key: 2, input: "A day I’ll never forget", value: "Unforgettable day" },
+  { key: 3, input: "If I had one wish", value: "One wish" },
+  { key: 4, input: "The best advice I got", value: "Best advice" },
+  { key: 5, input: "A place I love", value: "Favorite place" },
+  { key: 6, input: "Something that scares me", value: "Biggest fear" }
 ];
+
 
 const FOLLOWUP_PROMPTS = [
   { key: 1, input: "Add details", value: "Add details" },
