@@ -2,7 +2,7 @@
 
 import { isToday, isYesterday, subMonths, subWeeks } from 'date-fns';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import type { User } from '@/lib/auth';
 import { memo, useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -207,31 +207,14 @@ export function SidebarDocuments({ user, initialDocuments }: { user?: User; init
   const hasReachedEnd = lastPage ? !lastPage.hasMore : false;
   const hasEmptyDocuments = paginatedDocumentsData?.every(page => page.documents.length === 0) ?? false;
 
-  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  const pathname = usePathname();
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
-  
+
   useEffect(() => {
     const match = pathname.match(/\/documents\/([^/?]+)/);
     const newActiveId = match ? match[1] : null;
-    
-    if (newActiveId !== activeDocumentId) {
-      setActiveDocumentId(newActiveId);
-    }
-    
-    const updateActiveDocument = () => {
-      const newPathname = window.location.pathname;
-      const newMatch = newPathname.match(/\/documents\/([^/?]+)/);
-      const newId = newMatch ? newMatch[1] : null;
-      
-      setActiveDocumentId(newId);
-    };
-    
-    window.addEventListener('popstate', updateActiveDocument);
-    
-    return () => {
-      window.removeEventListener('popstate', updateActiveDocument);
-    };
-  }, [pathname, activeDocumentId]);
+    setActiveDocumentId(newActiveId);
+  }, [pathname]);
 
   useEffect(() => {
     const handleDocumentCreated = (event: CustomEvent) => {
@@ -579,50 +562,41 @@ export function SidebarDocuments({ user, initialDocuments }: { user?: User; init
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="h-7 text-xs border border-r bg-sidebar-accent"
               />
+              
             </div>
             
             {filteredDocuments.length > 0 && (
-              <div className="flex flex-wrap items-center justify-start px-2 py-1 mb-2 gap-2">
-                {!isSelectionMode && (
+              <>
+                <div className="grid grid-cols-2 gap-2 px-2 mt-1 mb-2">
                   <Button
-                    variant="outline"
+                    variant={"outline"}
                     size="sm"
                     onClick={handleToggleSelectionMode}
-                    className="h-7 text-xs px-1"
+                    className={cn(
+                      "h-7 text-xs w-full",
+                      !isSelectionMode && "col-span-2"
+                    )}
                   >
-                    Select
+                    {isSelectionMode ? "Cancel" : "Select"}
                   </Button>
-                )}
-                {isSelectionMode && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleSelectAll}
-                      className="h-7 text-xs px-1"
-                    >
-                      {selectedDocuments.size === filteredDocuments.length ? 'Deselect All' : 'Select All'}
-                    </Button>
+
+                  {isSelectionMode && (
+                    <>
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => selectedDocuments.size > 0 && setShowMultiDeleteDialog(true)}
+                      onClick={() =>
+                        selectedDocuments.size > 0 && setShowMultiDeleteDialog(true)
+                      }
                       disabled={selectedDocuments.size === 0}
-                      className="h-7 text-xs px-1"
+                      className="h-7 text-xs w-full"
                     >
                       Delete ({selectedDocuments.size})
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleToggleSelectionMode}
-                      className="h-7 text-xs px-1"
-                    >
-                      Cancel
-                    </Button>
-                  </>
-                )}
-              </div>
+                    </>
+                  )}
+                </div>
+              </>
             )}
 
             <SidebarGroupContent>

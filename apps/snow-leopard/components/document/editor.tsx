@@ -11,6 +11,7 @@ import {
   setSaveStatus,
   createSaveFunction,
   createForceSaveHandler,
+  createDebouncedVersionHandler,
   type SaveState,
 } from "@/lib/editor/save-plugin";
 import { createEditorPlugins } from "@/lib/editor/editor-plugins";
@@ -22,7 +23,7 @@ import SynonymOverlay from "@/components/synonym-overlay";
 type EditorProps = {
   content: string;
   status: "streaming" | "idle";
-  isCurrentVersion: boolean;
+  isCurrentVersion: boolean | undefined;
   currentVersionIndex: number;
   documentId: string;
   initialLastSaved: Date | null;
@@ -75,7 +76,16 @@ function PureEditor({
     currentDocumentIdRef.current = documentId;
   }, [documentId]);
 
+  const isCurrentVersionRef = useRef(isCurrentVersion);
+  useEffect(() => {
+    isCurrentVersionRef.current = isCurrentVersion;
+    if (editorRef.current) {
+      editorRef.current.setProps({ editable: () => !!isCurrentVersion });
+    }
+  }, [isCurrentVersion]);
+
   const performSave = useCallback(createSaveFunction(currentDocumentIdRef), []);
+  const debouncedVersionHandler = useCallback(createDebouncedVersionHandler(currentDocumentIdRef), []);
   const requestInlineSuggestionCallback = useCallback(
     createInlineSuggestionCallback(documentId),
     [documentId]
@@ -91,6 +101,7 @@ function PureEditor({
         requestInlineSuggestion: (state) =>
           requestInlineSuggestionCallback(state, abortControllerRef, editorRef),
         setActiveFormats,
+        isCurrentVersion: () => !!isCurrentVersionRef.current,
       });
 
       const initialEditorState = EditorState.create({
@@ -119,6 +130,12 @@ function PureEditor({
           const newSaveState = savePluginKey.getState(newState);
           if (onStatusChange && newSaveState && newSaveState !== oldSaveState) {
             onStatusChange(newSaveState);
+          }
+
+          // Handle debounced version creation when content changes (only for current version)
+          if (transaction.docChanged && isCurrentVersion) {
+            const currentContent = buildContentFromDocument(newState.doc);
+            debouncedVersionHandler(currentContent);
           }
 
           if (
@@ -154,6 +171,7 @@ function PureEditor({
           requestInlineSuggestion: (state) =>
             requestInlineSuggestionCallback(state, abortControllerRef, editorRef),
           setActiveFormats,
+          isCurrentVersion: () => !!isCurrentVersionRef.current,
         });
 
         const newDoc = buildDocumentFromContent(content);
@@ -183,7 +201,7 @@ function PureEditor({
       }
 
       currentView.setProps({
-        editable: () => isCurrentVersion,
+        editable: () => !!isCurrentVersion,
       });
     }
 
@@ -209,6 +227,15 @@ function PureEditor({
     onCreateDocumentRequest,
     requestInlineSuggestionCallback,
   ]);
+  
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.dom.setAttribute(
+        "contenteditable",
+        isCurrentVersion ? "true" : "false"
+      );
+    }
+  }, [isCurrentVersion]);
 
   useEffect(() => {
     const handleCreationStreamFinished = (event: CustomEvent) => {
@@ -393,3 +420,5 @@ function areEqual(prevProps: EditorProps, nextProps: EditorProps) {
 }
 
 export const Editor = memo(PureEditor, areEqual);
+
+

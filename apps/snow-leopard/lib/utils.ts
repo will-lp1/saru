@@ -404,3 +404,109 @@ export function parseMessageContent(content: any): MessageContent[] {
     order: 0,
   }];
 }
+
+// IndexedDB utilities for caching document versions
+const DB_NAME = 'snow-leopard-cache';
+const DB_VERSION = 1;
+const VERSIONS_STORE = 'document-versions';
+
+interface CachedVersion {
+  documentId: string;
+  versions: any[];
+  timestamp: number;
+  userId: string;
+}
+
+class VersionCache {
+  private db: IDBDatabase | null = null;
+
+  async init(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve();
+      };
+      
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(VERSIONS_STORE)) {
+          db.createObjectStore(VERSIONS_STORE, { keyPath: 'documentId' });
+        }
+      };
+    });
+  }
+
+  async getVersions(documentId: string, userId: string): Promise<any[] | null> {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([VERSIONS_STORE], 'readonly');
+      const store = transaction.objectStore(VERSIONS_STORE);
+      const request = store.get(documentId);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const cached: CachedVersion | undefined = request.result;
+        if (cached && cached.userId === userId) {
+          // Check if cache is still valid (5 minutes)
+          const isExpired = Date.now() - cached.timestamp > 5 * 60 * 1000;
+          if (!isExpired) {
+            resolve(cached.versions);
+            return;
+          }
+        }
+        resolve(null);
+      };
+    });
+  }
+
+  async setVersions(documentId: string, versions: any[], userId: string): Promise<void> {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([VERSIONS_STORE], 'readwrite');
+      const store = transaction.objectStore(VERSIONS_STORE);
+      const request = store.put({
+        documentId,
+        versions,
+        timestamp: Date.now(),
+        userId
+      });
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  }
+
+  async invalidateVersions(documentId: string): Promise<void> {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([VERSIONS_STORE], 'readwrite');
+      const store = transaction.objectStore(VERSIONS_STORE);
+      const request = store.delete(documentId);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  }
+
+  async clearAll(): Promise<void> {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([VERSIONS_STORE], 'readwrite');
+      const store = transaction.objectStore(VERSIONS_STORE);
+      const request = store.clear();
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  }
+}
+
+// Export singleton instance
+export const versionCache = new VersionCache();
