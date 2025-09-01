@@ -163,6 +163,7 @@ export const auth = betterAuth({
   
   trustedOrigins: [
     "https://www.cursorforwrit.ing",
+    "https://www.trysaru.com",
     ...(process.env.NODE_ENV === "development" ? ["http://localhost:3000"] : []),
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
   ],
