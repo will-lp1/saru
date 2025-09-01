@@ -142,7 +142,7 @@ export default function Home() {
           </div>
 
           {/* Social Proof */}
-          <div className="flex flex-col items-center mt-10 md:mt-12">
+          <div className="flex flex-col items-center mt-6">
               <div className="flex flex-col items-center gap-4 md:gap-5">
                 <div className="text-md tracking-tight text-muted-foreground text-center">Used by</div>
                 <div className="max-w-4xl mx-auto w-full">
