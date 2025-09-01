@@ -21,6 +21,7 @@ import {
 import { toast } from 'sonner';
 import { useLocalStorage, useWindowSize } from 'usehooks-ts';
 import { MentionsInput, Mention, type SuggestionDataItem, type MentionsInputProps } from 'react-mentions';
+import { motion } from 'framer-motion';
 
 import { sanitizeUIMessages } from '@/lib/utils';
 
@@ -42,6 +43,26 @@ export interface MentionedDocument {
   id: string;
   title: string;
 }
+
+// feel free to modify starter and follow up prompts according to you
+const STARTER_PROMPTS = [
+  { key: 1, input: "My favorite memory", value: "Favorite memory" },
+  { key: 2, input: "A day I’ll never forget", value: "Unforgettable day" },
+  { key: 3, input: "If I had one wish", value: "One wish" },
+  { key: 4, input: "The best advice I got", value: "Best advice" },
+  { key: 5, input: "A place I love", value: "Favorite place" },
+  { key: 6, input: "Something that scares me", value: "Biggest fear" }
+];
+
+
+const FOLLOWUP_PROMPTS = [
+  { key: 1, input: "Add details", value: "Add details" },
+  { key: 2, input: "Expand to story", value: "Expand to story" },
+  { key: 3, input: "Summarize", value: "Summarize" },
+  { key: 4, input: "Add a twist", value: "Add a twist" },
+  { key: 5, input: "Make poetic", value: "Make poetic" }
+];
+
 
 const mentionInputStyle: MentionsInputProps['style'] = {
   control: {
@@ -199,7 +220,11 @@ function PureMultimodalInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadQueue, setUploadQueue] = useState<Array<string>>([]);
 
-  const submitForm = useCallback(() => {
+  const submitForm = useCallback((customInput?: string) => {
+    const inputToSubmit = customInput || inputValue;
+    
+    if (!inputToSubmit.trim()) return;
+
     const contextData: {
       activeDocumentId?: string;
       mentionedDocumentIds?: string[];
@@ -217,7 +242,13 @@ function PureMultimodalInput({
       data: contextData,
     };
     
-    handleSubmit(undefined, options);
+    // If using custom input, we need to override the input temporarily
+    if (customInput) {
+      // Use append instead of handleSubmit for custom input
+      append({ role: 'user', content: customInput }, options);
+    } else {
+      handleSubmit(undefined, options);
+    }
 
     setAttachments([]);
     setInputValue('');
@@ -228,17 +259,54 @@ function PureMultimodalInput({
       mentionInputRef.current?.focus();
     }
   }, [
+    inputValue,
     attachments,
     currentDoc.documentId,
     confirmedMentions,
     handleSubmit,
+    append,
     setAttachments,
+    setInput,
     onMentionsChange,
     width,
   ]);
 
+  // Handle suggestion button clicks
+  const handleSuggestionClick = useCallback((prompt: string) => {
+    submitForm(prompt);
+  }, [submitForm]);
+
+  const getSuggestions = () => {
+      console.log('getSuggestiona:', messages.length);
+
+    const isChatEmpty = messages.length === 0 && 
+                        attachments.length === 0 && 
+                        uploadQueue.length === 0 && 
+                        confirmedMentions.length === 0;
+
+    if (isChatEmpty) {
+      return {
+        prompts: STARTER_PROMPTS,
+        style: "prominent",
+        show: true
+      };
+    } else if (messages.length > 0) {  // ✅ Only show followup if there are actual messages
+      return {
+        prompts: FOLLOWUP_PROMPTS,
+        style: "subtle",
+        show: status === 'ready'
+      };
+    } else {
+      return {
+        prompts: [],  // ✅ Show nothing when files added but no messages
+        style: "prominent",
+        show: false
+      };
+    }
+  };
+
   // Fetch suggestions for react-mentions
-  const fetchSuggestions = (
+  const fetchSuggestionsOfDocs = (
     query: string,
     callback: (data: SuggestionDataItem[]) => void
   ) => {
@@ -354,14 +422,47 @@ function PureMultimodalInput({
     }
   };
 
+  const currentSuggestions = getSuggestions();
+
   return (
-    <div className="relative w-full flex flex-col gap-4" onKeyDown={handleKeyDown}>
-      {messages.length === 0 &&
+    <div className="relative w-full flex flex-col gap-3" onKeyDown={handleKeyDown}>
+      
+      {/* Suggestion buttons - context-aware display */}
+      {currentSuggestions.show && (
+        <div className={cn(
+          "flex gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+          currentSuggestions.style === "subtle" && "opacity-70 scale-90"
+        )}>
+          {currentSuggestions.prompts.map((prompt, index) => (
+            <motion.div
+              key={prompt.key}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.1 + index * 0.05, duration: 0.3 }}
+            >
+              <Button 
+                variant="outline"
+                size="sm" 
+                className={cn(
+                  "rounded-full hover:bg-primary hover:text-primary-foreground transition-colors text-sm px-4 py-2 h-auto border-border/60 dark:border-border/40 flex-shrink-0 bg-opacity-20 bg-gray-300",
+                )}
+                onClick={() => handleSuggestionClick(prompt.input)}
+                disabled={status !== 'ready'}
+              >
+                {prompt.value}
+              </Button>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {/* Original SuggestedActions component - only show when chat is completely empty */}
+      {/* {messages.length === 0 &&
         attachments.length === 0 &&
         uploadQueue.length === 0 &&
         confirmedMentions.length === 0 && (
           <SuggestedActions append={append} chatId={chatId} />
-        )}
+        )} */}
 
       <input
         type="file"
@@ -389,7 +490,7 @@ function PureMultimodalInput({
         >
           <Mention
             trigger="@"
-            data={fetchSuggestions}
+            data={fetchSuggestionsOfDocs}
             renderSuggestion={renderSuggestion}
             markup="@[__display__](__id__)"
             displayTransform={(id: string, display: string) => `@${display}`}
@@ -405,7 +506,7 @@ function PureMultimodalInput({
           ) : (
             <SendButton
               input={inputValue}
-              submitForm={submitForm}
+              submitForm={() => submitForm()}
               uploadQueue={uploadQueue}
             />
           )}
@@ -421,6 +522,7 @@ export const MultimodalInput = memo(
     if (prevProps.input !== nextProps.input) return false;
     if (prevProps.status !== nextProps.status) return false;
     if (!equal(prevProps.attachments, nextProps.attachments)) return false;
+    if (!equal(prevProps.messages, nextProps.messages)) return false;
     return true;
   },
 );
