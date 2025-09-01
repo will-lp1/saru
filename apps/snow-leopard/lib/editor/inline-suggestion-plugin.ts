@@ -1,5 +1,6 @@
 import { Plugin, PluginKey, EditorState, Transaction } from 'prosemirror-state';
 import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
+import { useAiOptions } from "@/hooks/ai-options";
 
 export interface InlineSuggestionState {
   suggestionText: string | null;
@@ -33,12 +34,26 @@ export function createInlineSuggestionCallback(documentId: string) {
       const { selection } = state;
       const { head } = selection;
 
-      const $head = state.doc.resolve(head);
-      const startOfNode = $head.start();
-      const contextBefore = state.doc.textBetween(startOfNode, head, "\n");
-      const endOfNode = $head.end();
-      const contextAfter = state.doc.textBetween(head, endOfNode, "\n");
+      const CONTEXT_WINDOW = 5000;
+
+      const beforeFrom = Math.max(0, head - CONTEXT_WINDOW);
+      const contextBefore = state.doc.textBetween(beforeFrom, head, "\n", "\n");
+
+      const afterTo = Math.min(state.doc.content.size, head + CONTEXT_WINDOW);
+      const contextAfter = state.doc.textBetween(head, afterTo, "\n", "\n");
       const fullContent = state.doc.textContent;
+
+      const trailingNewlinesBefore = (contextBefore.match(/\n+$/)?.[0].length) ?? 0;
+      const leadingNewlinesAfter = (contextAfter.match(/^\n+/)?.[0].length) ?? 0;
+      const prevChar = state.doc.textBetween(Math.max(0, head - 1), head);
+      const nextChar = state.doc.textBetween(head, Math.min(state.doc.content.size, head + 1));
+
+      const {
+        suggestionLength,
+        customInstructions,
+        writingStyleSummary,
+        applyStyle,
+      } = useAiOptions.getState();
 
       const response = await fetch("/api/inline-suggestion", {
         method: "POST",
@@ -49,6 +64,18 @@ export function createInlineSuggestionCallback(documentId: string) {
           contextAfter,
           fullContent,
           nodeType: "paragraph",
+          structureInfo: {
+            trailingNewlinesBefore,
+            leadingNewlinesAfter,
+            prevChar,
+            nextChar,
+          },
+          aiOptions: {
+            suggestionLength,
+            customInstructions,
+            writingStyleSummary,
+            applyStyle,
+          },
         }),
         signal: controller.signal,
       });
