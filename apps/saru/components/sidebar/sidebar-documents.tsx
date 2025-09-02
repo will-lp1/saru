@@ -4,7 +4,7 @@ import { isToday, isYesterday, subMonths, subWeeks } from 'date-fns';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import type { User } from '@/lib/auth';
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import useSWR from 'swr';
 import { cn, fetcher } from '@/lib/utils';
@@ -104,9 +104,11 @@ const PureDocumentItem = ({
   }, [document, isActive, isSelectionMode, isSelected, onToggleSelect, setOpenMobile, onSelect]);
 
   const router = useRouter();
-
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [showCustomMenu, setShowCustomMenu] = useState(false);
+  
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem className="relative">
       <div className="flex items-center w-full">
         {isSelectionMode && (
           <div className="flex items-center pl-2 pr-1">
@@ -132,27 +134,38 @@ const PureDocumentItem = ({
       </div>
 
       {!isSelectionMode && (
-        <DropdownMenu modal={true}>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuAction
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground mr-0.5"
-              showOnHover={!isActive}
-            >
-              <MoreHorizontalIcon />
-              <span className="sr-only">More</span>
-            </SidebarMenuAction>
-          </DropdownMenuTrigger>
+        <SidebarMenuAction
+          ref={buttonRef}
+          className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground mr-0.5"
+          showOnHover={!isActive}
+          onBlur={() => setTimeout(() => setShowCustomMenu(false), 100)}
+          onClick={() => setShowCustomMenu(!showCustomMenu)}
+        >
+          <MoreHorizontalIcon />
+          <span className="sr-only">More</span>
+        </SidebarMenuAction>
+      )}
 
-          <DropdownMenuContent side="bottom" align="end">
-            <DropdownMenuItem
-              className="cursor-pointer text-destructive focus:bg-destructive/15 focus:text-destructive dark:text-red-500"
-              onSelect={() => onDelete(document.id)}
-            >
-              <TrashIcon />
-              <span>Delete</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {/* Dropdown positioned just below the three dots */}
+      {!isSelectionMode && showCustomMenu && (
+        <div 
+          className="absolute right-0 top-full z-[9999] min-w-[8rem] overflow-visible rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+          style={{ 
+            marginTop: '2px' // Small gap below the button
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <div
+            className="cursor-pointer text-destructive hover:bg-destructive/15 hover:text-destructive relative flex select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors"
+            onClick={() => {
+              setShowCustomMenu(false);
+              onDelete(document.id);
+            }}
+          >
+            <TrashIcon />
+            <span>Delete</span>
+          </div>
+        </div>
       )}
     </SidebarMenuItem>
   );
