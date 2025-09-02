@@ -64,7 +64,7 @@ function PureChatHeader({
   return (
     <header
       className={cn(
-        'flex sticky top-0 bg-background/80 backdrop-blur-sm z-10 border-b border-border border-r border-border items-center px-3 h-[45px] gap-2 transition-all duration-200',
+        'flex sticky top-0 bg-background/80 backdrop-blur-sm z-10 border-b border-r border-border items-center px-3 h-[45px] gap-2 transition-all duration-200',
         className,
       )}
     >

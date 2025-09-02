@@ -4,12 +4,11 @@ import { isToday, isYesterday, subMonths, subWeeks } from 'date-fns';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import type { User } from '@/lib/auth';
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import useSWR from 'swr';
 import { cn, fetcher } from '@/lib/utils';
 import {
-  FileIcon,
   MoreHorizontalIcon,
   PlusIcon,
   TrashIcon,
@@ -25,12 +24,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
@@ -45,7 +38,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import useSWRInfinite from 'swr/infinite';
-import { motion } from 'framer-motion';
 
 type GroupedDocuments = {
   today: Document[];
@@ -104,9 +96,21 @@ const PureDocumentItem = ({
   }, [document, isActive, isSelectionMode, isSelected, onToggleSelect, setOpenMobile, onSelect]);
 
   const router = useRouter();
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const [showCustomMenu, setShowCustomMenu] = useState(false);
 
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+      }
+    };
+  }, []);
+  
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem className="relative">
       <div className="flex items-center w-full">
         {isSelectionMode && (
           <div className="flex items-center pl-2 pr-1">
@@ -132,27 +136,70 @@ const PureDocumentItem = ({
       </div>
 
       {!isSelectionMode && (
-        <DropdownMenu modal={true}>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuAction
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground mr-0.5"
-              showOnHover={!isActive}
-            >
-              <MoreHorizontalIcon />
-              <span className="sr-only">More</span>
-            </SidebarMenuAction>
-          </DropdownMenuTrigger>
+        <SidebarMenuAction
+          ref={buttonRef}
+          className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground mr-0.5"
+          showOnHover={!isActive}
+          data-state={showCustomMenu ? 'open' : 'closed'}
+          aria-haspopup="menu"
+          aria-expanded={showCustomMenu}
+          aria-controls={`doc-menu-${document.id}`}
+          onBlur={(e) => {
+            if (closeTimerRef.current) {
+              clearTimeout(closeTimerRef.current);
+              closeTimerRef.current = null;
+            }
+            const next = e.relatedTarget as Node | null;
+            if (menuRef.current && next && menuRef.current.contains(next)) return;
+            closeTimerRef.current = window.setTimeout(() => setShowCustomMenu(false), 100);
+          }}
+          onClick={() => setShowCustomMenu((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              setShowCustomMenu(false);
+            }
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setShowCustomMenu((v) => !v);
+            }
+          }}
+        >
+          <MoreHorizontalIcon />
+          <span className="sr-only">More</span>
+        </SidebarMenuAction>
+      )}
 
-          <DropdownMenuContent side="bottom" align="end">
-            <DropdownMenuItem
-              className="cursor-pointer text-destructive focus:bg-destructive/15 focus:text-destructive dark:text-red-500"
-              onSelect={() => onDelete(document.id)}
-            >
-              <TrashIcon />
-              <span>Delete</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {!isSelectionMode && showCustomMenu && (
+        <div 
+          ref={menuRef}
+          id={`doc-menu-${document.id}`}
+          role="menu"
+          aria-labelledby={`doc-menu-${document.id}`}
+          className="absolute right-0 top-full z-50 min-w-[8rem] overflow-visible rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+          style={{ 
+            marginTop: '2px' 
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              setShowCustomMenu(false);
+              buttonRef.current?.focus();
+            }
+          }}
+          >
+          <Button
+            variant="destructive"
+            size="sm"
+            role="menuitem"
+            className="h-7 text-sm w-full"
+            onClick={() => { setShowCustomMenu(false); onDelete(document.id); }}
+          >
+            Delete
+            <TrashIcon />
+          </Button>
+        </div>
       )}
     </SidebarMenuItem>
   );
