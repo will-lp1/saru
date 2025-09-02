@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { generateUUID } from "@/lib/utils";
 import { useSidebar } from "@/components/ui/sidebar";
 import { mutate as globalMutate } from 'swr';
+
 export interface CurrentDocument {
   documentId: string;
   title: string;
@@ -60,7 +61,6 @@ export function useDocument() {
   const handleResetChat = useCallback(() => {
     console.log('[useDocument] Resetting chat state');
     window.dispatchEvent(new CustomEvent('reset-chat-state'));
-
     globalMutate('/api/history');
     
     if (openMobile) {
