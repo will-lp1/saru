@@ -276,18 +276,6 @@ export function AlwaysVisibleArtifact({
       
       if (originalDocumentId !== document.documentId) return;
       
-      if (
-        typeof versionIndex !== 'number' ||
-        versionIndex < 0 ||
-        versionIndex >= documents.length - 1 
-      ) {
-        toast.error('Cannot fork from current version or invalid version');
-        return;
-      }
-      if (!forkFromTimestamp) {
-        toast.error('Missing fork timestamp');
-        return;
-      }
 
       console.log('[DocumentWorkspace] Handling version fork from index', versionIndex, 'timestamp', forkFromTimestamp);
       
