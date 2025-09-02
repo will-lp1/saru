@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { auth } from "@/lib/auth"; // Import Better Auth
-import { headers } from 'next/headers'; // Import headers
-import { getDocumentsById, getChatsByUserId } from '@/lib/db/queries'; // Import Drizzle queries
+import { auth } from "@/lib/auth"; 
+import { headers } from 'next/headers';
+import { getDocumentsById, getChatsByUserId } from '@/lib/db/queries';
 
 export async function GET() {
   // --- Authentication --- 

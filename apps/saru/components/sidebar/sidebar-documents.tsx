@@ -9,7 +9,6 @@ import { toast } from 'sonner';
 import useSWR from 'swr';
 import { cn, fetcher } from '@/lib/utils';
 import {
-  FileIcon,
   MoreHorizontalIcon,
   PlusIcon,
   TrashIcon,
@@ -25,12 +24,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
@@ -45,7 +38,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import useSWRInfinite from 'swr/infinite';
-import { motion } from 'framer-motion';
 
 type GroupedDocuments = {
   today: Document[];
@@ -105,7 +97,17 @@ const PureDocumentItem = ({
 
   const router = useRouter();
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const closeTimerRef = useRef<number | null>(null);
   const [showCustomMenu, setShowCustomMenu] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+      }
+    };
+  }, []);
   
   return (
     <SidebarMenuItem className="relative">
@@ -138,33 +140,65 @@ const PureDocumentItem = ({
           ref={buttonRef}
           className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground mr-0.5"
           showOnHover={!isActive}
-          onBlur={() => setTimeout(() => setShowCustomMenu(false), 100)}
-          onClick={() => setShowCustomMenu(!showCustomMenu)}
+          data-state={showCustomMenu ? 'open' : 'closed'}
+          aria-haspopup="menu"
+          aria-expanded={showCustomMenu}
+          aria-controls={`doc-menu-${document.id}`}
+          onBlur={(e) => {
+            if (closeTimerRef.current) {
+              clearTimeout(closeTimerRef.current);
+              closeTimerRef.current = null;
+            }
+            const next = e.relatedTarget as Node | null;
+            if (menuRef.current && next && menuRef.current.contains(next)) return;
+            closeTimerRef.current = window.setTimeout(() => setShowCustomMenu(false), 100);
+          }}
+          onClick={() => setShowCustomMenu((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              setShowCustomMenu(false);
+            }
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setShowCustomMenu((v) => !v);
+            }
+          }}
         >
           <MoreHorizontalIcon />
           <span className="sr-only">More</span>
         </SidebarMenuAction>
       )}
 
-      {/* Dropdown positioned just below the three dots */}
       {!isSelectionMode && showCustomMenu && (
         <div 
-          className="absolute right-0 top-full z-[9999] min-w-[8rem] overflow-visible rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+          ref={menuRef}
+          id={`doc-menu-${document.id}`}
+          role="menu"
+          aria-labelledby={`doc-menu-${document.id}`}
+          className="absolute right-0 top-full z-50 min-w-[8rem] overflow-visible rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
           style={{ 
-            marginTop: '2px' // Small gap below the button
+            marginTop: '2px' 
           }}
           onMouseDown={(e) => e.preventDefault()}
-        >
-          <div
-            className="cursor-pointer text-destructive hover:bg-destructive/15 hover:text-destructive relative flex select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors"
-            onClick={() => {
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
               setShowCustomMenu(false);
-              onDelete(document.id);
-            }}
+              buttonRef.current?.focus();
+            }
+          }}
           >
+          <Button
+            variant="destructive"
+            size="sm"
+            role="menuitem"
+            className="h-7 text-sm w-full"
+            onClick={() => { setShowCustomMenu(false); onDelete(document.id); }}
+          >
+            Delete
             <TrashIcon />
-            <span>Delete</span>
-          </div>
+          </Button>
         </div>
       )}
     </SidebarMenuItem>
