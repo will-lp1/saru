@@ -16,6 +16,7 @@ import { DataStreamHandler } from '@/components/data-stream-handler';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { useAiOptionsValue } from '@/hooks/ai-options';
+import { mutate as globalMutate } from 'swr';
 
 export interface ChatProps {
   id?: string;
@@ -179,6 +180,7 @@ export function Chat({
       if (detail.chatId !== chatId) {
           setChatId(detail.chatId);
           setRequestedChatLoadId(detail.chatId);
+          globalMutate('/api/history');
       }
     };
 
