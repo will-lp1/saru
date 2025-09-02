@@ -121,11 +121,11 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
 
   const triggerFork = (idx: number) => {
     const version = versions[idx];
-    if (!version || idx >= versions.length - 1) return;
-    
+    if (!version) return;
+
     window.dispatchEvent(
       new CustomEvent('version-fork', {
-        detail: { 
+        detail: {
           originalDocumentId: baseDocumentId,
           versionIndex: idx,
           forkFromTimestamp: version.createdAt,
@@ -209,9 +209,6 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
       setHoverIndex(null);
     }
 
-    if (isViewingHistory) {
-      commitIndex(versions.length - 1);
-    }
   };
 
   const Tooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: { ts: string; additions: number; deletions: number } }> }) => {
