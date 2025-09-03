@@ -20,7 +20,9 @@ const crimson = Crimson_Text({
 
 export default function Home() {
   const router = useRouter();
-  const [hasSession, setHasSession] = useState<boolean>(false);
+
+  const { data: session } = authClient.useSession();
+  const hasSession = !!session?.user;
 
   const [starGoal, setStarGoal] = useState(0);
   const { count: animatedStarCount } = useCounter(starGoal);
@@ -35,26 +37,6 @@ export default function Home() {
       })
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const { data: session, error } = await authClient.getSession();
-        if (error) {
-          console.error("Error fetching session:", error);
-          return;
-        }
-
-        const isLoggedIn = !!session?.user;
-        setHasSession(isLoggedIn);
-
-      } catch (error) {
-        console.error("Error checking session unexpectedly:", error);
-      }
-    };
-
-    checkSession();
-  }, [router]);
 
   const handleBeginClick = () => {
     if (hasSession) {
