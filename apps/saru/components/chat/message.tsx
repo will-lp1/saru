@@ -1,6 +1,6 @@
 'use client';
 
-import type { ChatRequestOptions, Message } from 'ai';
+import type { ChatRequestOptions, UIMessage } from 'ai';
 import cx from 'classnames';
 import { AnimatePresence, motion } from 'framer-motion';
 import { memo, useState } from 'react';
@@ -64,10 +64,10 @@ const PurePreviewMessage = ({
   isReadonly,
 }: {
   chatId: string;
-  message: Message;
+  message: UIMessage;
   isLoading: boolean;
   setMessages: (
-    messages: Message[] | ((messages: Message[]) => Message[]),
+    messages: UIMessage[] | ((messages: UIMessage[]) => UIMessage[]),
   ) => void;
   reload: (
     chatRequestOptions?: ChatRequestOptions,
@@ -75,6 +75,17 @@ const PurePreviewMessage = ({
   isReadonly: boolean;
 }) => {
   console.log('[PreviewMessage] Rendering message:', message);
+
+  // Extract reasoning from parts array
+  const reasoningPart = message.parts?.find(part => part.type === 'reasoning');
+  const reasoningText = reasoningPart?.reasoning;
+
+  // Extract text content from parts array
+  const textParts = message.parts?.filter(part => part.type === 'text') || [];
+  const textContent = textParts.map(part => part.text).join('');
+
+  // Extract tool invocations from parts array
+  const toolInvocationParts = message.parts?.filter(part => part.type === 'tool-invocation') || [];
 
   return (
     <AnimatePresence>
@@ -104,14 +115,14 @@ const PurePreviewMessage = ({
           )}
 
           <div className="flex flex-col gap-4 w-full">
-            {message.reasoning && (
+            {reasoningText && (
               <MessageReasoning
                 isLoading={isLoading}
-                reasoning={message.reasoning}
+                reasoningText={reasoningText}
               />
             )}
 
-            {(message.content || message.reasoning) && (
+            {(message.content || textContent || reasoningText) && (
               <div
                 data-testid="message-content"
                 className="flex flex-row gap-2 items-start"
@@ -122,8 +133,9 @@ const PurePreviewMessage = ({
                       message.role === 'user',
                   })}
                 >
-                  {typeof message.content === 'string' ? (
-                    <Markdown>{formatMessageWithMentions(message.content)}</Markdown>
+                  {/* Use textContent from parts if available, fallback to message.content */}
+                  {typeof (textContent || message.content) === 'string' ? (
+                    <Markdown>{formatMessageWithMentions(textContent || message.content)}</Markdown>
                   ) : (
                     <pre className="text-sm text-red-500">
                       Error: Invalid message content format
@@ -133,94 +145,187 @@ const PurePreviewMessage = ({
               </div>
             )}
 
-            {message.toolInvocations && message.toolInvocations.length > 0 && (
+            {/* Handle tool invocations from parts array first, fallback to legacy toolInvocations */}
+            {(toolInvocationParts.length > 0 || (message.toolInvocations && message.toolInvocations.length > 0)) && (
               <div className="flex flex-col gap-4">
-                {message.toolInvocations.map((toolInvocation) => {
-                  const { toolName, toolCallId, state, args } = toolInvocation;
+                {/* Use parts-based tool invocations if available */}
+                {toolInvocationParts.length > 0 ? (
+                  toolInvocationParts.map((part, index) => {
+                    const { toolInvocation } = part;
+                    const { toolName, toolCallId, state, args } = toolInvocation;
 
-                  if (state === 'result') {
-                    const { result } = toolInvocation;
-                    if (toolName === 'webSearch') {
-                      const results = (result as any).results || [];
+                    if (state === 'result') {
+                      const { result } = toolInvocation; // Only destructure result when state is 'result'
+                      if (toolName === 'webSearch') {
+                        const results = (result as any).results || [];
+                        return (
+                          <WebSearchResult key={toolCallId || index} query={(args as any).query} results={results} />
+                        );
+                      }
                       return (
-                        <WebSearchResult key={toolCallId} query={(args as any).query} results={results} />
+                        <div key={toolCallId || index}>
+                          {toolName === 'createDocument' ? (
+                            <DocumentToolResult
+                              type="create"
+                              result={result}
+                              isReadonly={isReadonly}
+                            />
+                          ) : toolName === 'streamingDocument' ? (
+                            <DocumentToolResult
+                              type="stream"
+                              result={result}
+                              isReadonly={isReadonly}
+                            />
+                          ) : toolName === 'updateDocument' ? (
+                            <DocumentToolResult
+                              type="update"
+                              result={result}
+                              isReadonly={isReadonly}
+                            />
+                          ) : toolName === 'requestSuggestions' ? (
+                            <DocumentToolResult
+                              type="request-suggestions"
+                              result={result}
+                              isReadonly={isReadonly}
+                            />
+                          ) : (
+                            <pre>{JSON.stringify(result, null, 2)}</pre>
+                          )}
+                        </div>
                       );
                     }
+                    if (state === 'call' && toolName === 'webSearch') {
+                      return (
+                        <div key={toolCallId || index} className="bg-background border rounded-xl w-full max-w-md p-3 text-sm animate-pulse">
+                          Searching web for &quot;{(args as any).query}&quot;...
+                        </div>
+                      );
+                    }
+
                     return (
-                      <div key={toolCallId}>
+                      <div
+                        key={toolCallId || index}
+                        className={cx({
+                          skeleton: ['getWeather'].includes(toolName),
+                        })}
+                      >
                         {toolName === 'createDocument' ? (
-                          <DocumentToolResult
+                          <DocumentToolCall
                             type="create"
-                            result={result}
+                            args={args}
                             isReadonly={isReadonly}
                           />
                         ) : toolName === 'streamingDocument' ? (
-                          <DocumentToolResult
+                          <DocumentToolCall
                             type="stream"
-                            result={result}
+                            args={args}
                             isReadonly={isReadonly}
                           />
                         ) : toolName === 'updateDocument' ? (
-                          <DocumentToolResult
+                          <DocumentToolCall
                             type="update"
-                            result={result}
+                            args={args}
                             isReadonly={isReadonly}
                           />
                         ) : toolName === 'requestSuggestions' ? (
-                          <DocumentToolResult
+                          <DocumentToolCall
                             type="request-suggestions"
-                            result={result}
+                            args={args}
                             isReadonly={isReadonly}
                           />
-                        ) : (
-                          <pre>{JSON.stringify(result, null, 2)}</pre>
-                        )}
+                        ) : null}
                       </div>
                     );
-                  }
-                  if (state === 'call' && toolName === 'webSearch') {
-                    return (
-                      <div key={toolCallId} className="bg-background border rounded-xl w-full max-w-md p-3 text-sm animate-pulse">
-                        Searching web for &quot;{(args as any).query}&quot;...
-                      </div>
-                    );
-                  }
+                  })
+                ) : (
+                  /* Fallback to legacy toolInvocations (Just a fallback, can be removed) */ 
+                  message.toolInvocations?.map((toolInvocation) => {
+                    const { toolName, toolCallId, state, args } = toolInvocation;
 
-                  return (
-                    <div
-                      key={toolCallId}
-                      className={cx({
-                        skeleton: ['getWeather'].includes(toolName),
-                      })}
-                    >
-                      {toolName === 'createDocument' ? (
-                        <DocumentToolCall
-                          type="create"
-                          args={args}
-                          isReadonly={isReadonly}
-                        />
-                      ) : toolName === 'streamingDocument' ? (
-                        <DocumentToolCall
-                          type="stream"
-                          args={args}
-                          isReadonly={isReadonly}
-                        />
-                      ) : toolName === 'updateDocument' ? (
-                        <DocumentToolCall
-                          type="update"
-                          args={args}
-                          isReadonly={isReadonly}
-                        />
-                      ) : toolName === 'requestSuggestions' ? (
-                        <DocumentToolCall
-                          type="request-suggestions"
-                          args={args}
-                          isReadonly={isReadonly}
-                        />
-                      ) : null}
-                    </div>
-                  );
-                })}
+                    if (state === 'result') {
+                      const { result } = toolInvocation;
+                      if (toolName === 'webSearch') {
+                        const results = (result as any).results || [];
+                        return (
+                          <WebSearchResult key={toolCallId} query={(args as any).query} results={results} />
+                        );
+                      }
+                      return (
+                        <div key={toolCallId}>
+                          {toolName === 'createDocument' ? (
+                            <DocumentToolResult
+                              type="create"
+                              result={result}
+                              isReadonly={isReadonly}
+                            />
+                          ) : toolName === 'streamingDocument' ? (
+                            <DocumentToolResult
+                              type="stream"
+                              result={result}
+                              isReadonly={isReadonly}
+                            />
+                          ) : toolName === 'updateDocument' ? (
+                            <DocumentToolResult
+                              type="update"
+                              result={result}
+                              isReadonly={isReadonly}
+                            />
+                          ) : toolName === 'requestSuggestions' ? (
+                            <DocumentToolResult
+                              type="request-suggestions"
+                              result={result}
+                              isReadonly={isReadonly}
+                            />
+                          ) : (
+                            <pre>{JSON.stringify(result, null, 2)}</pre>
+                          )}
+                        </div>
+                      );
+                    }
+                    if (state === 'call' && toolName === 'webSearch') {
+                      return (
+                        <div key={toolCallId} className="bg-background border rounded-xl w-full max-w-md p-3 text-sm animate-pulse">
+                          Searching web for &quot;{(args as any).query}&quot;...
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={toolCallId}
+                        className={cx({
+                          skeleton: ['getWeather'].includes(toolName),
+                        })}
+                      >
+                        {toolName === 'createDocument' ? (
+                          <DocumentToolCall
+                            type="create"
+                            args={args}
+                            isReadonly={isReadonly}
+                          />
+                        ) : toolName === 'streamingDocument' ? (
+                          <DocumentToolCall
+                            type="stream"
+                            args={args}
+                            isReadonly={isReadonly}
+                          />
+                        ) : toolName === 'updateDocument' ? (
+                          <DocumentToolCall
+                            type="update"
+                            args={args}
+                            isReadonly={isReadonly}
+                          />
+                        ) : toolName === 'requestSuggestions' ? (
+                          <DocumentToolCall
+                            type="request-suggestions"
+                            args={args}
+                            isReadonly={isReadonly}
+                          />
+                        ) : null}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             )}
 
@@ -243,9 +348,18 @@ export const PreviewMessage = memo(
   PurePreviewMessage,
   (prevProps, nextProps) => {
     if (prevProps.isLoading !== nextProps.isLoading) return false;
-    if (prevProps.message.reasoning !== nextProps.message.reasoning)
-      return false;
+    
+    // Update comparison logic for parts-based reasoning
+    const prevReasoning = prevProps.message.parts?.find(part => part.type === 'reasoning')?.reasoning || prevProps.message.reasoning;
+    const nextReasoning = nextProps.message.parts?.find(part => part.type === 'reasoning')?.reasoning || nextProps.message.reasoning;
+    if (prevReasoning !== nextReasoning) return false;
+    
     if (prevProps.message.content !== nextProps.message.content) return false;
+    
+    // Compare parts array
+    if (!equal(prevProps.message.parts, nextProps.message.parts)) return false;
+    
+    // Still compare legacy toolInvocations for backward compatibility
     if (
       !equal(
         prevProps.message.toolInvocations,
