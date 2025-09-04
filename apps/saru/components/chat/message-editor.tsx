@@ -1,6 +1,6 @@
 'use client';
 
-import { ChatRequestOptions, Message } from 'ai';
+import { ChatRequestOptions, UIMessage } from 'ai';
 import { Button } from '../ui/button';
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
 import { Textarea } from '../ui/textarea';
@@ -8,10 +8,10 @@ import { deleteTrailingMessages } from '@/app/api/chat/actions/chat';
 import { toast } from 'sonner';
 
 export type MessageEditorProps = {
-  message: Message;
+  message: UIMessage;
   setMode: Dispatch<SetStateAction<'view' | 'edit'>>;
   setMessages: (
-    messages: Message[] | ((messages: Message[]) => Message[]),
+    messages: UIMessage[] | ((messages: UIMessage[]) => UIMessage[]),
   ) => void;
   reload: (
     chatRequestOptions?: ChatRequestOptions,
