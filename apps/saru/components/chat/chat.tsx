@@ -1,6 +1,6 @@
 'use client';
 
-import type { Attachment, Message, ChatRequestOptions } from 'ai';
+import type { Attachment, UIMessage, ChatRequestOptions } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import { useState, useEffect } from 'react';
 import { ChatHeader } from '@/components/chat/chat-header';
@@ -20,7 +20,7 @@ import { mutate as globalMutate } from 'swr';
 
 export interface ChatProps {
   id?: string;
-  initialMessages: Array<Message>;
+  initialMessages: Array<UIMessage>;
   selectedChatModel?: string;
   isReadonly?: boolean;
 }
