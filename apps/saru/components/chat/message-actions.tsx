@@ -24,8 +24,13 @@ export function PureMessageActions({
 
   if (isLoading) return null;
   if (message.role === 'user') return null;
-  if (message.toolInvocations && message.toolInvocations.length > 0)
-    return null;
+  
+  // Check for tool parts instead of deprecated toolInvocations
+  const hasToolParts = message.parts?.some(part => 
+    part.type?.startsWith('tool-')
+  ) ?? false;
+  
+  if (hasToolParts) return null;
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -36,10 +41,11 @@ export function PureMessageActions({
               className="py-1 px-2 h-fit text-muted-foreground"
               variant="outline"
               onClick={async () => {
-                const content = typeof message.content === 'string' 
-                  ? message.content 
-                  : JSON.stringify(message.content);
-                await copyToClipboard(content);
+                // Extract text content from parts
+                const textParts = message.parts?.filter(part => part.type === 'text') ?? [];
+                const content = textParts.map(part => part.text).join('');
+                
+                await copyToClipboard(content || '');
                 toast.success('Copied to clipboard!');
               }}
             >
