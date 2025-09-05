@@ -1,38 +1,42 @@
-'use client';
+"use client";
 
-import type { ChatRequestOptions, UIMessage } from 'ai';
-import cx from 'classnames';
-import { AnimatePresence, motion } from 'framer-motion';
-import { memo, useState } from 'react';
-import { DocumentToolCall, DocumentToolResult } from '@/components/document/document-tool';
-import { Markdown } from '../markdown';
-import { MessageActions } from './message-actions';
-import equal from 'fast-deep-equal';
-import { cn } from '@/lib/utils';
-import { MessageReasoning } from './message-reasoning';
-import Image from 'next/image';
+import type { ChatRequestOptions, UIMessage } from "ai";
+import cx from "classnames";
+import { AnimatePresence, motion } from "framer-motion";
+import { memo, useState } from "react";
+import {
+  DocumentToolCall,
+  DocumentToolResult,
+} from "@/components/document/document-tool";
+import { Markdown } from "../markdown";
+import { MessageActions } from "./message-actions";
+import equal from "fast-deep-equal";
+import { cn } from "@/lib/utils";
+import { MessageReasoning } from "./message-reasoning";
+import Image from "next/image";
+import { UseChatHelpers } from "@ai-sdk/react";
 
 function formatMessageWithMentions(content: string) {
   if (!content) return content;
-  
+
   const mentionRegex = /@([a-zA-Z0-9\s_-]+)/g;
-  
+
   const parts = content.split(mentionRegex);
-  
+
   if (parts.length <= 1) return content;
-  
+
   const formattedContent = [];
   let i = 0;
-  
+
   let match;
   let lastIndex = 0;
   const regex = new RegExp(mentionRegex);
-  
+
   while ((match = regex.exec(content)) !== null) {
     if (match.index > lastIndex) {
       formattedContent.push(content.substring(lastIndex, match.index));
     }
-    
+
     const documentName = match[1];
     formattedContent.push(
       `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-sm font-medium">
@@ -44,15 +48,15 @@ function formatMessageWithMentions(content: string) {
         ${documentName}
       </span>`
     );
-    
+
     lastIndex = match.index + match[0].length;
   }
-  
+
   if (lastIndex < content.length) {
     formattedContent.push(content.substring(lastIndex));
   }
-  
-  return formattedContent.join('');
+
+  return formattedContent.join("");
 }
 
 const PurePreviewMessage = ({
@@ -60,32 +64,35 @@ const PurePreviewMessage = ({
   message,
   isLoading,
   setMessages,
-  reload,
+  regenerate,
   isReadonly,
 }: {
   chatId: string;
   message: UIMessage;
   isLoading: boolean;
   setMessages: (
-    messages: UIMessage[] | ((messages: UIMessage[]) => UIMessage[]),
+    messages: UIMessage[] | ((messages: UIMessage[]) => UIMessage[])
   ) => void;
-  reload: (
-    chatRequestOptions?: ChatRequestOptions,
-  ) => Promise<string | null | undefined>;
+  regenerate: UseChatHelpers<UIMessage>["regenerate"];
   isReadonly: boolean;
 }) => {
-  console.log('[PreviewMessage] Rendering message:', message);
+  console.log("[PreviewMessage] Rendering message:", message);
 
   // Extract reasoning from parts array
-  const reasoningPart = message.parts?.find(part => part.type === 'reasoning');
-  const reasoningText = reasoningPart?.reasoning;
+  const reasoningPart = message.parts?.find(
+    (part) => part.type === "reasoning"
+  );
+  const reasoningText = reasoningPart ? reasoningPart.text : "";
 
   // Extract text content from parts array
-  const textParts = message.parts?.filter(part => part.type === 'text') || [];
-  const textContent = textParts.map(part => part.text).join('');
+  const textParts = message.parts?.filter((part) => part.type === "text") || [];
+  const textContent = textParts.map((part) => part.text).join("");
 
-  // Extract tool invocations from parts array
-  const toolInvocationParts = message.parts?.filter(part => part.type === 'tool-invocation') || [];
+  // Extract tool parts from parts array (FIXED - was looking for 'tool-invocation')
+  const toolParts =
+    message.parts?.filter((part) => part.type?.startsWith("tool-")) || [];
+
+  console.log("[PreviewMessage] Tool parts found:", toolParts);
 
   return (
     <AnimatePresence>
@@ -98,18 +105,18 @@ const PurePreviewMessage = ({
       >
         <div
           className={cn(
-            'flex gap-4 w-full group-data-[role=user]/message:ml-auto group-data-[role=user]/message:max-w-2xl',
-            'group-data-[role=user]/message:w-fit'
+            "flex gap-4 w-full group-data-[role=user]/message:ml-auto group-data-[role=user]/message:max-w-2xl",
+            "group-data-[role=user]/message:w-fit"
           )}
         >
-          {message.role === 'assistant' && (
+          {message.role === "assistant" && (
             <div className="size-8 flex items-center justify-center rounded-full ring-1 shrink-0 ring-border bg-background overflow-hidden relative">
               <Image
                 src="/images/leopardprintbw.svg"
                 alt="Saru"
                 fill
                 className="object-cover dark:invert"
-                style={{ transform: 'scale(2.5)' }}
+                style={{ transform: "scale(2.5)" }}
               />
             </div>
           )}
@@ -122,20 +129,21 @@ const PurePreviewMessage = ({
               />
             )}
 
-            {(message.content || textContent || reasoningText) && (
+            {(textContent || reasoningText) && (
               <div
                 data-testid="message-content"
                 className="flex flex-row gap-2 items-start"
               >
                 <div
-                  className={cn('flex flex-col gap-4', {
-                    'bg-primary text-primary-foreground px-3 py-2 rounded-xl':
-                      message.role === 'user',
+                  className={cn("flex flex-col gap-4", {
+                    "bg-primary text-primary-foreground px-3 py-2 rounded-xl":
+                      message.role === "user",
                   })}
                 >
-                  {/* Use textContent from parts if available, fallback to message.content */}
-                  {typeof (textContent || message.content) === 'string' ? (
-                    <Markdown>{formatMessageWithMentions(textContent || message.content)}</Markdown>
+                  {typeof textContent === "string" ? (
+                    <Markdown>
+                      {formatMessageWithMentions(textContent)}
+                    </Markdown>
                   ) : (
                     <pre className="text-sm text-red-500">
                       Error: Invalid message content format
@@ -145,189 +153,114 @@ const PurePreviewMessage = ({
               </div>
             )}
 
-            {/* Handle tool invocations from parts array first, fallback to legacy toolInvocations */}
-            {(toolInvocationParts.length > 0 || (message.toolInvocations && message.toolInvocations.length > 0)) && (
-              <div className="flex flex-col gap-4">
-                {/* Use parts-based tool invocations if available */}
-                {toolInvocationParts.length > 0 ? (
-                  toolInvocationParts.map((part, index) => {
-                    const { toolInvocation } = part;
-                    const { toolName, toolCallId, state, args } = toolInvocation;
+            {toolParts.map((part, index) => {
+              // Handle webSearch tool
 
-                    if (state === 'result') {
-                      const { result } = toolInvocation; // Only destructure result when state is 'result'
-                      if (toolName === 'webSearch') {
-                        const results = (result as any).results || [];
-                        return (
-                          <WebSearchResult key={toolCallId || index} query={(args as any).query} results={results} />
-                        );
-                      }
-                      return (
-                        <div key={toolCallId || index}>
-                          {toolName === 'createDocument' ? (
-                            <DocumentToolResult
-                              type="create"
-                              result={result}
-                              isReadonly={isReadonly}
-                            />
-                          ) : toolName === 'streamingDocument' ? (
-                            <DocumentToolResult
-                              type="stream"
-                              result={result}
-                              isReadonly={isReadonly}
-                            />
-                          ) : toolName === 'updateDocument' ? (
-                            <DocumentToolResult
-                              type="update"
-                              result={result}
-                              isReadonly={isReadonly}
-                            />
-                          ) : toolName === 'requestSuggestions' ? (
-                            <DocumentToolResult
-                              type="request-suggestions"
-                              result={result}
-                              isReadonly={isReadonly}
-                            />
-                          ) : (
-                            <pre>{JSON.stringify(result, null, 2)}</pre>
-                          )}
-                        </div>
-                      );
-                    }
-                    if (state === 'call' && toolName === 'webSearch') {
-                      return (
-                        <div key={toolCallId || index} className="bg-background border rounded-xl w-full max-w-md p-3 text-sm animate-pulse">
-                          Searching web for &quot;{(args as any).query}&quot;...
-                        </div>
-                      );
-                    }
+              if (part.type === "tool-webSearch") {
+                if (part.state === "output-available" && "output" in part) {
+                  const result = part.output as any;
 
+                  const input = "input" in part ? (part.input as any) : {};
+
+                  const query = input?.query || "";
+
+                  const results = result?.results || [];
+
+                  return (
+                    <WebSearchResult
+                      key={`web-search-result-${index}`}
+                      query={query}
+                      results={results}
+                    />
+                  );
+                }
+
+                if (
+                  part.state === "input-streaming" ||
+                  part.state === "input-available"
+                ) {
+                  const input = "input" in part ? (part.input as any) : {};
+
+                  const query = input?.query || "";
+
+                  return (
+                    <div
+                      key={`web-search-loading-${index}`}
+                      className="bg-background border rounded-xl w-full max-w-md p-3 text-sm animate-pulse"
+                    >
+                      Searching web for &quot;{query}&quot;...
+                    </div>
+                  );
+                }
+              }
+              // Handle tool parts with dynamic type checking
+              if (part.type?.startsWith("tool-") && "state" in part) {
+                if (part.state === "output-available" && "output" in part) {
+                  const result = part.output;
+
+                  let actionType:
+                    | "create"
+                    | "stream"
+                    | "update"
+                    | "request-suggestions" = "update";
+
+                  if (part.type === "tool-updateDocument") {
+                    actionType = "update";
+                  } else if (part.type === "tool-createDocument") {
+                    actionType = "create";
+                  } else if (part.type === "tool-streamDocument") {
+                    actionType = "stream";
+                  } else if (part.type === "tool-requestSuggestions") {
+                    actionType = "request-suggestions";
+                  }
+
+                  // Type guard for result structure
+                  if (result && typeof result === "object" && result !== null) {
                     return (
-                      <div
-                        key={toolCallId || index}
-                        className={cx({
-                          skeleton: ['getWeather'].includes(toolName),
-                        })}
-                      >
-                        {toolName === 'createDocument' ? (
-                          <DocumentToolCall
-                            type="create"
-                            args={args}
-                            isReadonly={isReadonly}
-                          />
-                        ) : toolName === 'streamingDocument' ? (
-                          <DocumentToolCall
-                            type="stream"
-                            args={args}
-                            isReadonly={isReadonly}
-                          />
-                        ) : toolName === 'updateDocument' ? (
-                          <DocumentToolCall
-                            type="update"
-                            args={args}
-                            isReadonly={isReadonly}
-                          />
-                        ) : toolName === 'requestSuggestions' ? (
-                          <DocumentToolCall
-                            type="request-suggestions"
-                            args={args}
-                            isReadonly={isReadonly}
-                          />
-                        ) : null}
-                      </div>
+                      <DocumentToolResult
+                        key={`tool-result-${index}`}
+                        type={actionType}
+                        result={result as any}
+                        isReadonly={isReadonly}
+                      />
                     );
-                  })
-                ) : (
-                  /* Fallback to legacy toolInvocations (Just a fallback, can be removed) */ 
-                  message.toolInvocations?.map((toolInvocation) => {
-                    const { toolName, toolCallId, state, args } = toolInvocation;
+                  }
+                }
 
-                    if (state === 'result') {
-                      const { result } = toolInvocation;
-                      if (toolName === 'webSearch') {
-                        const results = (result as any).results || [];
-                        return (
-                          <WebSearchResult key={toolCallId} query={(args as any).query} results={results} />
-                        );
-                      }
-                      return (
-                        <div key={toolCallId}>
-                          {toolName === 'createDocument' ? (
-                            <DocumentToolResult
-                              type="create"
-                              result={result}
-                              isReadonly={isReadonly}
-                            />
-                          ) : toolName === 'streamingDocument' ? (
-                            <DocumentToolResult
-                              type="stream"
-                              result={result}
-                              isReadonly={isReadonly}
-                            />
-                          ) : toolName === 'updateDocument' ? (
-                            <DocumentToolResult
-                              type="update"
-                              result={result}
-                              isReadonly={isReadonly}
-                            />
-                          ) : toolName === 'requestSuggestions' ? (
-                            <DocumentToolResult
-                              type="request-suggestions"
-                              result={result}
-                              isReadonly={isReadonly}
-                            />
-                          ) : (
-                            <pre>{JSON.stringify(result, null, 2)}</pre>
-                          )}
-                        </div>
-                      );
-                    }
-                    if (state === 'call' && toolName === 'webSearch') {
-                      return (
-                        <div key={toolCallId} className="bg-background border rounded-xl w-full max-w-md p-3 text-sm animate-pulse">
-                          Searching web for &quot;{(args as any).query}&quot;...
-                        </div>
-                      );
-                    }
+                if (
+                  part.state === "streaming" ||
+                  part.state === "input-available"
+                ) {
+                  let actionType:
+                    | "create"
+                    | "stream"
+                    | "update"
+                    | "request-suggestions" = "update";
 
-                    return (
-                      <div
-                        key={toolCallId}
-                        className={cx({
-                          skeleton: ['getWeather'].includes(toolName),
-                        })}
-                      >
-                        {toolName === 'createDocument' ? (
-                          <DocumentToolCall
-                            type="create"
-                            args={args}
-                            isReadonly={isReadonly}
-                          />
-                        ) : toolName === 'streamingDocument' ? (
-                          <DocumentToolCall
-                            type="stream"
-                            args={args}
-                            isReadonly={isReadonly}
-                          />
-                        ) : toolName === 'updateDocument' ? (
-                          <DocumentToolCall
-                            type="update"
-                            args={args}
-                            isReadonly={isReadonly}
-                          />
-                        ) : toolName === 'requestSuggestions' ? (
-                          <DocumentToolCall
-                            type="request-suggestions"
-                            args={args}
-                            isReadonly={isReadonly}
-                          />
-                        ) : null}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
+                  if (part.type === "tool-updateDocument") {
+                    actionType = "update";
+                  } else if (part.type === "tool-createDocument") {
+                    actionType = "create";
+                  } else if (part.type === "tool-streamDocument") {
+                    actionType = "stream";
+                  } else if (part.type === "tool-requestSuggestions") {
+                    actionType = "request-suggestions";
+                  }
+
+                  const input = "input" in part ? part.input : {};
+
+                  return (
+                    <DocumentToolCall
+                      key={`tool-call-${index}`}
+                      type={actionType}
+                      args={input as any}
+                      isReadonly={isReadonly}
+                    />
+                  );
+                }
+              }
+              return null;
+            })}
 
             {!isReadonly && (
               <MessageActions
@@ -348,31 +281,24 @@ export const PreviewMessage = memo(
   PurePreviewMessage,
   (prevProps, nextProps) => {
     if (prevProps.isLoading !== nextProps.isLoading) return false;
-    
+
     // Update comparison logic for parts-based reasoning
-    const prevReasoning = prevProps.message.parts?.find(part => part.type === 'reasoning')?.reasoning || prevProps.message.reasoning;
-    const nextReasoning = nextProps.message.parts?.find(part => part.type === 'reasoning')?.reasoning || nextProps.message.reasoning;
+    const prevReasoning = prevProps.message.parts?.find(
+      (part) => part.type === "reasoning"
+    )?.text;
+    const nextReasoning = nextProps.message.parts?.find(
+      (part) => part.type === "reasoning"
+    )?.text;
     if (prevReasoning !== nextReasoning) return false;
-    
-    if (prevProps.message.content !== nextProps.message.content) return false;
-    
+
     // Compare parts array
     if (!equal(prevProps.message.parts, nextProps.message.parts)) return false;
-    
-    // Still compare legacy toolInvocations for backward compatibility
-    if (
-      !equal(
-        prevProps.message.toolInvocations,
-        nextProps.message.toolInvocations,
-      )
-    )
-      return false;
     return true;
-  },
+  }
 );
 
 export const ThinkingMessage = () => {
-  const role = 'assistant';
+  const role = "assistant";
 
   return (
     <motion.div
@@ -384,10 +310,10 @@ export const ThinkingMessage = () => {
     >
       <div
         className={cx(
-          'flex gap-4 group-data-[role=user]/message:px-3 w-full group-data-[role=user]/message:w-fit group-data-[role=user]/message:ml-auto group-data-[role=user]/message:max-w-2xl group-data-[role=user]/message:py-2 rounded-xl',
+          "flex gap-4 group-data-[role=user]/message:px-3 w-full group-data-[role=user]/message:w-fit group-data-[role=user]/message:ml-auto group-data-[role=user]/message:max-w-2xl group-data-[role=user]/message:py-2 rounded-xl",
           {
-            'group-data-[role=user]/message:bg-muted': true,
-          },
+            "group-data-[role=user]/message:bg-muted": true,
+          }
         )}
       >
         <div className="size-8 flex items-center justify-center rounded-full ring-1 shrink-0 ring-border overflow-hidden relative">
@@ -396,7 +322,7 @@ export const ThinkingMessage = () => {
             alt="Saru"
             fill
             className="object-cover dark:invert"
-            style={{ transform: 'scale(2.5)' }}
+            style={{ transform: "scale(2.5)" }}
           />
         </div>
 
@@ -411,14 +337,23 @@ export const ThinkingMessage = () => {
 };
 
 // Insert collapsible search result component
-function WebSearchResult({ query, results }: { query: string; results: any[] }) {
+function WebSearchResult({
+  query,
+  results,
+}: {
+  query: string;
+  results: any[];
+}) {
   const [open, setOpen] = useState(false);
   return (
     <div className="bg-background border rounded-xl w-full max-w-md p-4 text-sm">
       <div className="flex items-center justify-between">
         <span>Search completed for &quot;{query}&quot;</span>
-        <button onClick={() => setOpen(!open)} className="text-blue-600 hover:underline">
-          {open ? 'Hide sources' : `View ${results.length} sources`}
+        <button
+          onClick={() => setOpen(!open)}
+          className="text-blue-600 hover:underline"
+        >
+          {open ? "Hide sources" : `View ${results.length} sources`}
         </button>
       </div>
       {open && (
@@ -426,7 +361,12 @@ function WebSearchResult({ query, results }: { query: string; results: any[] }) 
           {results.map((item, idx) => (
             <li key={idx}>
               {item.title ? (
-                <a href={item.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
                   {item.title}
                 </a>
               ) : (
