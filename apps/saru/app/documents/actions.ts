@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 
 import {
   getDocumentById,
-  saveDocument,
+  updateDocumentVersion,
 } from '@/lib/db/queries';
 import { myProvider } from '@/lib/ai/providers';
 export async function generateDocumentTitleFromContent({
@@ -35,21 +35,18 @@ export async function updateDocumentContent({
 }) {
   // First get the existing document to preserve other fields
   const document = await getDocumentById({ id });
-  
+
   // Handle case where document is not found
   if (!document) {
     console.error(`[Action] updateDocumentContent: Document with ID ${id} not found.`);
     // Optionally throw an error or handle differently
-    throw new Error(`Document not found: ${id}`); 
+    throw new Error(`Document not found: ${id}`);
   }
-  
-  // Now document is guaranteed to be non-null
-  await saveDocument({
-    id: document.id, // Use document.id for consistency
-    title: document.title,
-    kind: null,
+
+  // Update the document content using updateDocumentVersion
+  await updateDocumentVersion({
+    documentId: document.id,
     content,
-    userId: document.userId,
-    // saveDocument creates a new version, is_current defaults to true
+    previousContent: document.content || undefined,
   });
 } 

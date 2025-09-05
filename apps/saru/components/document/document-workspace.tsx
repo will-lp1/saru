@@ -27,6 +27,11 @@ const Editor = dynamic(() => import('@/components/document/editor').then(mod => 
   loading: () => <EditorSkeleton />,
 });
 
+const EditorSwitcher = dynamic(() => import('@/components/document/editor-switcher').then(mod => mod.EditorSwitcher), {
+  ssr: false,
+  loading: () => <EditorSkeleton />,
+});
+
 const EditorSkeleton = () => (
   <div className="space-y-4 animate-pulse">
     <div className="h-6 bg-muted rounded w-3/4"></div>
@@ -123,7 +128,7 @@ export function AlwaysVisibleArtifact({
         throw new Error(`Failed to rename document: ${errorData.error || response.statusText}`);
       }
 
-      const updatedDocumentData = await response.json(); 
+      const updatedDocumentData = await response.json();
 
       setDocument(current => ({
         ...current,
@@ -259,9 +264,9 @@ export function AlwaysVisibleArtifact({
       const { documentId: renamedDocId, newTitle: updatedTitle } = event.detail;
 
       setDocuments(prevDocs =>
-          prevDocs.map(doc =>
-              doc.id === renamedDocId ? { ...doc, title: updatedTitle } : doc
-          )
+        prevDocs.map(doc =>
+          doc.id === renamedDocId ? { ...doc, title: updatedTitle } : doc
+        )
       );
 
       if (renamedDocId === document.documentId) {
@@ -273,17 +278,17 @@ export function AlwaysVisibleArtifact({
 
     const handleVersionFork = async (event: CustomEvent) => {
       const { originalDocumentId, versionIndex, forkFromTimestamp } = event.detail;
-      
+
       if (originalDocumentId !== document.documentId) return;
-      
+
 
       console.log('[DocumentWorkspace] Handling version fork from index', versionIndex, 'timestamp', forkFromTimestamp);
-      
+
       try {
         // Get the current document title for naming the fork
         const currentDoc = documents[documents.length - 1];
         const forkTitle = `${currentDoc?.title || 'Document'} (Fork)`;
-        
+
         const response = await fetch('/api/document', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -295,20 +300,20 @@ export function AlwaysVisibleArtifact({
             newTitle: forkTitle,
           }),
         });
-        
+
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
           throw new Error(`Fork failed: ${errorData.error || response.statusText}`);
         }
-        
+
         const forkResult = await response.json();
         console.log('[DocumentWorkspace] Fork successful:', forkResult);
-        
+
         // Navigate to the new forked document
         toast.success(`Forked to new document: ${forkTitle}`);
         const newId = forkResult.newDocumentId ?? forkResult.documentId ?? forkResult.id;
         router.push(`/documents/${newId}`);
-        
+
       } catch (error: any) {
         console.error('[DocumentWorkspace] Version fork failed:', error);
         toast.error(`Failed to fork document: ${error.message}`);
@@ -317,7 +322,7 @@ export function AlwaysVisibleArtifact({
 
     window.addEventListener('document-renamed', handleDocumentRenamed as unknown as EventListener);
     window.addEventListener('version-fork', handleVersionFork as unknown as EventListener);
-    
+
 
     return () => {
       window.removeEventListener('document-renamed', handleDocumentRenamed as unknown as EventListener);
@@ -326,14 +331,14 @@ export function AlwaysVisibleArtifact({
   }, [newTitle, editingTitle, setDocuments, document.documentId]);
 
   const handleDocumentUpdate = (updatedFields: Partial<Document>) => {
-      setDocuments(prevDocs =>
-          prevDocs.map(doc => {
-              if (doc.id === updatedFields.id) {
-                  return { ...doc, ...updatedFields };
-              }
-              return doc;
-          })
-      );
+    setDocuments(prevDocs =>
+      prevDocs.map(doc => {
+        if (doc.id === updatedFields.id) {
+          return { ...doc, ...updatedFields };
+        }
+        return doc;
+      })
+    );
 
   };
 
@@ -350,8 +355,8 @@ export function AlwaysVisibleArtifact({
     if (trimmedNewTitle && trimmedNewTitle !== latestDocument.title) {
       const originalTitle = latestDocument.title;
       const originalDocuments = [...documents];
-      
-      setDocuments(prevDocs => prevDocs.map(doc => 
+
+      setDocuments(prevDocs => prevDocs.map(doc =>
         doc.id === latestDocument.id ? { ...doc, title: trimmedNewTitle } : doc
       ));
 
@@ -365,8 +370,8 @@ export function AlwaysVisibleArtifact({
         setEditingTitle(false);
       }
     } else {
-       setEditingTitle(false);
-       if (!trimmedNewTitle) setNewTitle(latestDocument.title);
+      setEditingTitle(false);
+      if (!trimmedNewTitle) setNewTitle(latestDocument.title);
     }
   }, [newTitle, latestDocument, documents, renameDocument, setDocuments]);
 
@@ -380,27 +385,27 @@ export function AlwaysVisibleArtifact({
     if (documents.length <= 1 && (type === 'next' || type === 'prev' || type === 'toggle')) return;
 
     startTransition(() => {
-        if (type === 'latest') {
-            setCurrentVersionIndex(documents.length - 1);
-            setMode('edit');
-            return;
-        }
+      if (type === 'latest') {
+        setCurrentVersionIndex(documents.length - 1);
+        setMode('edit');
+        return;
+      }
 
-        if (type === 'toggle') {
-            const nextMode = mode === 'edit' ? 'diff' : 'edit';
-            setMode(nextMode);
-            if (nextMode === 'edit') {
-                setCurrentVersionIndex(documents.length - 1);
-            }
-            return;
+      if (type === 'toggle') {
+        const nextMode = mode === 'edit' ? 'diff' : 'edit';
+        setMode(nextMode);
+        if (nextMode === 'edit') {
+          setCurrentVersionIndex(documents.length - 1);
         }
+        return;
+      }
 
-        setMode('diff');
-        if (type === 'prev') {
-            setCurrentVersionIndex((index) => Math.max(0, index - 1));
-        } else if (type === 'next') {
-            setCurrentVersionIndex((index) => Math.min(documents.length - 1, index + 1));
-        }
+      setMode('diff');
+      if (type === 'prev') {
+        setCurrentVersionIndex((index) => Math.max(0, index - 1));
+      } else if (type === 'next') {
+        setCurrentVersionIndex((index) => Math.min(documents.length - 1, index + 1));
+      }
     });
   }, [documents, mode, startTransition]);
 
@@ -454,20 +459,20 @@ export function AlwaysVisibleArtifact({
   }, [isCreatingDocument, newDocumentTitle, createDocument]);
 
   const handleCreateDocumentFromEditor = useCallback(async (initialContent: string) => {
-      if (isCreatingDocument || initialDocumentId !== 'init') return;
-      const newDocId = generateUUID();
-      try {
-          await createDocument({
-              title: 'Untitled Document',
-              content: initialContent,
-              chatId: null,
-              navigateAfterCreate: true,
-              providedId: newDocId
-          });
-      } catch (error) {
-          console.error('Error creating document from editor:', error);
-          toast.error('Failed to create document');
-      }
+    if (isCreatingDocument || initialDocumentId !== 'init') return;
+    const newDocId = generateUUID();
+    try {
+      await createDocument({
+        title: 'Untitled Document',
+        content: initialContent,
+        chatId: null,
+        navigateAfterCreate: true,
+        providedId: newDocId
+      });
+    } catch (error) {
+      console.error('Error creating document from editor:', error);
+      toast.error('Failed to create document');
+    }
   }, [isCreatingDocument, initialDocumentId, createDocument]);
 
   const isCurrentVersion = useMemo(() => {
@@ -478,20 +483,20 @@ export function AlwaysVisibleArtifact({
   }, [currentVersionIndex, documents, initialDocumentId]);
 
   const editorContent = useMemo(() => {
-      if (initialDocumentId === 'init' && !showCreateDocumentForId) {
-          return '';
-      }
-      if (documents.length === 0 && !showCreateDocumentForId) {
-          return '';
-      }
-      return getContentForVersion(currentVersionIndex);
+    if (initialDocumentId === 'init' && !showCreateDocumentForId) {
+      return '';
+    }
+    if (documents.length === 0 && !showCreateDocumentForId) {
+      return '';
+    }
+    return getContentForVersion(currentVersionIndex);
 
   }, [initialDocumentId, documents, currentVersionIndex, showCreateDocumentForId, getContentForVersion]);
 
   const editorDocumentId = useMemo(() => {
-       if (showCreateDocumentForId) return 'init';
-       return latestDocument?.id ?? 'init';
-   }, [showCreateDocumentForId, latestDocument]);
+    if (showCreateDocumentForId) return 'init';
+    return latestDocument?.id ?? 'init';
+  }, [showCreateDocumentForId, latestDocument]);
 
   if (showCreateDocumentForId) {
     return (
@@ -500,7 +505,7 @@ export function AlwaysVisibleArtifact({
           <SidebarTrigger />
         </div>
 
-        <div className="flex flex-col items-center justify-center h-full gap-8 px-4 text-muted-foreground"> 
+        <div className="flex flex-col items-center justify-center h-full gap-8 px-4 text-muted-foreground">
           <Card className="w-44 h-32 sm:w-52 sm:h-36 md:w-56 md:h-40 border border-border shadow-sm overflow-hidden bg-background">
             <div className="h-5 bg-muted flex items-center px-2 text-[9px] text-muted-foreground/80 font-mono gap-1">
               <Skeleton className="h-2.5 w-3/5" />
@@ -659,7 +664,7 @@ export function AlwaysVisibleArtifact({
           <SidebarTrigger side="right" />
         </div>
       </div>
-      
+
       <div className="bg-background text-foreground dark:bg-black dark:text-white h-full overflow-y-auto !max-w-full items-center relative">
         <VersionRail
           versions={documents}
@@ -671,25 +676,25 @@ export function AlwaysVisibleArtifact({
         />
 
         <div className="px-8 py-6 mx-auto max-w-3xl">
-             {isPending ? (
-                 <EditorSkeleton />
-             ) : (
-                 <Suspense fallback={<EditorSkeleton />}>
-                     <Editor
-                        key={`${editorDocumentId}-${currentVersionIndex}`}
-                        content={editorContent}
-                        status={'idle'}
-                        isCurrentVersion={isCurrentVersion}
-                        currentVersionIndex={currentVersionIndex}
-                        documentId={editorDocumentId}
-                        initialLastSaved={latestDocument ? new Date(latestDocument.updatedAt) : null}
-                        onStatusChange={(newSaveState: SaveState) => {
-                           setSaveState(newSaveState.status);
-                        }}
-                        onCreateDocumentRequest={handleCreateDocumentFromEditor}
-                      />
-                </Suspense>
-             )}
+          {isPending ? (
+            <EditorSkeleton />
+          ) : (
+            <Suspense fallback={<EditorSkeleton />}>
+              <EditorSwitcher
+                key={`${editorDocumentId}-${currentVersionIndex}`}
+                content={editorContent}
+                status={'idle'}
+                isCurrentVersion={isCurrentVersion}
+                currentVersionIndex={currentVersionIndex}
+                documentId={editorDocumentId}
+                initialLastSaved={latestDocument ? new Date(latestDocument.updatedAt) : null}
+                onStatusChange={(newSaveState: SaveState) => {
+                  setSaveState(newSaveState.status);
+                }}
+                onCreateDocumentRequest={handleCreateDocumentFromEditor}
+              />
+            </Suspense>
+          )}
         </div>
       </div>
     </div>
