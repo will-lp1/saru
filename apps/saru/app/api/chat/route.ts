@@ -276,10 +276,12 @@ export async function POST(request: Request) {
       availableTools.createDocument = createDocument({ session: toolSession });
       availableTools.streamingDocument = streamingDocument({ session: toolSession });
       activeToolsList.push('createDocument', 'streamingDocument');
-    } else if ((activeDoc?.content?.length ?? 0) === 0) {
+    } 
+    else if ((activeDoc?.content?.length ?? 0) === 0 && activeDoc?.title === 'Document') {
       availableTools.streamingDocument = streamingDocument({ session: toolSession });
       activeToolsList.push('streamingDocument');
-    } else {
+    }
+    else {
       availableTools.updateDocument = updateDocument({ session: toolSession, documentId: validatedActiveDocumentId });
       activeToolsList.push('updateDocument');
     }
