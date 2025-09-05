@@ -1,6 +1,6 @@
 import { tool, generateText } from 'ai';
 import { Session } from '@/lib/auth';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { getDocumentById } from '@/lib/db/queries';
 import { myProvider } from '@/lib/ai/providers';
 
@@ -12,7 +12,7 @@ interface UpdateDocumentProps {
 export const updateDocument = ({ session: _session, documentId: defaultDocumentId }: UpdateDocumentProps) =>
   tool({
     description: 'Update a document based on a description. Returns the original and proposed new content for review.',
-    parameters: z.object({
+    inputSchema: z.object({
       description: z
         .string()
         .describe('The description of changes that need to be made'),
