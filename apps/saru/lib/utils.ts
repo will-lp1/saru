@@ -1,11 +1,5 @@
 import type {
-  CoreAssistantMessage,
-  CoreToolMessage,
-  Message,
-  TextStreamPart,
-  ToolInvocation,
-  ToolCall,
-  ToolResult,
+  UIMessage,
 } from 'ai';
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -53,222 +47,289 @@ export function generateUUID(): string {
   });
 }
 
-function addToolMessageToChat({
-  toolMessage,
-  messages,
-}: {
-  toolMessage: CoreToolMessage;
-  messages: Array<Message>;
-}): Array<Message> {
-  return messages.map((message) => {
-    if (message.toolInvocations) {
-      return {
-        ...message,
-        toolInvocations: message.toolInvocations.map((toolInvocation) => {
-          const toolResult = toolMessage.content.find(
-            (tool) => tool.toolCallId === toolInvocation.toolCallId,
-          );
+// function addToolMessageToChat({
+//   toolMessage,
+//   messages,
+// }: {
+//   toolMessage: CoreToolMessage;
+//   messages: Array<UIMessage>;
+// }): Array<UIMessage> {
+//   return messages.map((message) => {
+//     if (message.toolInvocations) {
+//       return {
+//         ...message,
+//         toolInvocations: message.toolInvocations.map((toolInvocation) => {
+//           const toolResult = toolMessage.content.find(
+//             (tool) => tool.toolCallId === toolInvocation.toolCallId,
+//           );
 
-          if (toolResult) {
-            return {
-              ...toolInvocation,
-              state: 'result',
-              result: toolResult.result,
-            };
-          }
+//           if (toolResult) {
+//             return {
+//               ...toolInvocation,
+//               state: 'result',
+//               result: toolResult.result,
+//             };
+//           }
 
-          return toolInvocation;
-        }),
-      };
-    }
+//           return toolInvocation;
+//         }),
+//       };
+//     }
 
-    return message;
-  });
-}
-
-// Extend ToolInvocation to include result
-type ExtendedToolInvocation = ToolInvocation & {
-  result?: any;
-  // applied?: boolean; // Remove applied flag
-};
+//     return message;
+//   });
+// }
 
 export function convertToUIMessages(
   messages: Array<DBMessage>,
-): Array<Message> {
-  const processedMessages: Array<Message> = [];
+): Array<UIMessage> {
+  const processedMessages: Array<UIMessage> = [];
 
   for (const message of messages) {
     if (message.role === 'tool') {
-      // Process tool results and update the corresponding assistant message's invocation
-      const toolResults = Array.isArray(message.content) ? message.content : [message.content];
-
-      for (const toolResultContent of toolResults) {
-        if (toolResultContent?.type === 'tool_result') {
-          const toolCallId = toolResultContent.toolCallId || toolResultContent.content?.toolCallId;
-          const resultData = toolResultContent.result || toolResultContent.content?.result;
-
-          if (toolCallId) {
-            // Find the assistant message with the matching tool call ID
-            for (let i = processedMessages.length - 1; i >= 0; i--) {
-              const assistantMessage = processedMessages[i];
-              if (assistantMessage.role === 'assistant' && assistantMessage.toolInvocations) {
-                const invocationIndex = assistantMessage.toolInvocations.findIndex(
-                  (inv) => inv.toolCallId === toolCallId
-                );
-                if (invocationIndex !== -1) {
-                  const invocationToUpdate = assistantMessage.toolInvocations[invocationIndex] as ExtendedToolInvocation;
-                  invocationToUpdate.state = 'result';
-                  invocationToUpdate.result = resultData;
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-
       continue;
     }
 
+    const parts: UIMessage['parts'] = [];
     let textContent = '';
-    let reasoning: string | undefined = undefined;
-    const toolInvocations: Array<ExtendedToolInvocation> = [];
+    
+    const messageContent = message.content as any;
+    const messageParts = messageContent.parts || []
 
-    if (typeof message.content === 'string') {
-      textContent = message.content;
-    } else if (Array.isArray(message.content)) {
-      for (const content of message.content) {
-        if (content.type === 'text') {
-          textContent += content.content;
-        } else if (content.type === 'tool_call') {
-          toolInvocations.push({
-            state: 'call',
-            toolCallId: content.toolCallId || content.content?.toolCallId,
-            toolName: content.toolName || content.content.toolName,
-            args: content.args || content.content.args,
+    for (const part of messageParts) {
+      switch(part.type) {
+        case 'text':
+          textContent += part.text || '';
+          parts.push({
+            type: 'text',
+            text: part.text || '',
+            state: part.state,
+            providerMetadata: part.providerMetadata
+          })
+          break;
+
+        case 'reasoning':
+          parts.push({
+            type: 'reasoning',
+            text: part.text || '',
+            state: part.state,
+            providerMetadata: part.providerMetadata
           });
-        } else if (content.type === 'tool_result') {
-          // Find matching tool invocation and update it
-          const existingInvocation = toolInvocations.find(
-            inv => inv.toolCallId === (content.toolCallId || content.content?.toolCallId)
-          );
-          if (existingInvocation) {
-            existingInvocation.state = 'result';
-            existingInvocation.result = content.result || content.content?.result;
-          } else {
-            // If no matching invocation found, create a new one
-            console.warn('[convertToUIMessages] Tool result found without matching call:', content);
-            toolInvocations.push({
-              state: 'result',
-              toolCallId: content.toolCallId || content.content?.toolCallId,
-              toolName: content.toolName || content.content?.toolName,
-              args: content.args || content.content?.args,
-              result: content.result || content.content?.result,
+          break;
+
+        case 'source-url':
+          parts.push({
+            type: 'source-url',
+            sourceId: part.sourceId,
+            url: part.url,
+            title: part.title,
+            providerMetadata: part.providerMetadata
+          });
+        break;
+
+        case 'source-document':
+          parts.push({
+            type: 'source-document',
+            sourceId: part.sourceId,
+            mediaType: part.mediaType,
+            title: part.title,
+            filename: part.filename,
+            providerMetadata: part.providerMetadata
+          });
+          break;
+
+        case 'file':
+          parts.push({
+            type: 'file',
+            mediaType: part.mediaType,
+            filename: part.filename,
+            url: part.url,
+            providerMetadata: part.providerMetadata
+          });
+          break;
+
+        case 'step-start':
+          parts.push({
+            type: 'step-start'
+          });
+          break;
+
+          default:
+          // Handle tool parts (tool-*) and data parts (data-*)
+          if (part.type?.startsWith('tool-')) {
+            parts.push({
+              type: part.type,
+              toolCallId: part.toolCallId,
+              state: part.state,
+              input: part.input,
+              output: part.output,
+              errorText: part.errorText,
+              providerExecuted: part.providerExecuted,
+              callProviderMetadata: part.callProviderMetadata,
+              preliminary: part.preliminary,
+              rawInput: part.rawInput
             });
+          } else if (part.type?.startsWith('data-')) {
+            parts.push({
+              type: part.type,
+              id: part.id,
+              data: part.data
+            });
+          } else {
+            // Pass through any unknown part types
+            parts.push(part);
           }
-        } else if (content.type === 'reasoning') {
-          reasoning = content.reasoning || content.content.reasoning;
-        }
+          break;
+        
       }
     }
 
     processedMessages.push({
       id: message.id,
-      role: message.role as Message['role'],
-      content: textContent,
-      reasoning,
-      toolInvocations: toolInvocations.length > 0 ? toolInvocations : undefined,
+      role: message.role as UIMessage['role'],
+      parts: parts,
     });
   }
 
   return processedMessages;
 }
 
-type ResponseMessageWithoutId = CoreToolMessage | CoreAssistantMessage;
-type ResponseMessage = ResponseMessageWithoutId & { id: string };
 
-export function sanitizeResponseMessages({
-  messages,
-  reasoning,
-}: {
-  messages: Array<ResponseMessage>;
-  reasoning: string | undefined;
-}) {
-  const toolResultIds: Array<string> = [];
+// export function sanitizeResponseMessages({
+//   messages,
+//   reasoningText,
+// }: {
+//   messages: Array<DBMessage>;
+//   reasoningText: string | undefined;
+// }): Array<DBMessage> {
+//   const toolResultIds: Array<string> = [];
 
-  for (const message of messages) {
-    if (message.role === 'tool') {
-      for (const content of message.content) {
-        if (content.type === 'tool-result') {
-          toolResultIds.push(content.toolCallId);
+//   // Collect all tool call IDs that have corresponding results
+//   for (const message of messages) {
+//     const messageContent = message.content as any;
+//     const parts = messageContent?.parts || [];
+
+//     for (const part of parts) {
+//       if (part.type?.startsWith('tool-') && part.state === 'output-available' && part.toolCallId) {
+//         toolResultIds.push(part.toolCallId);
+//       }
+//     }
+//   }
+
+//   const sanitizedMessages = messages.map((message) => {
+//     const messageContent = message.content as any;
+//     const parts = messageContent?.parts || [];
+
+//     const sanitizedParts = parts.filter((part: any) => {
+//       // Filter tool parts: only keep those that have corresponding results
+//       if (part.type?.startsWith('tool-')) {
+//         return toolResultIds.includes(part.toolCallId);
+//       }
+      
+//       // Filter text parts: only keep those with non-empty text
+//       if (part.type === 'text') {
+//         return part.text && part.text.length > 0;
+//       }
+      
+//       // Keep all other part types
+//       return true;
+//     });
+
+//     // Add reasoning part if provided
+//     if (reasoningText && message.role === 'assistant') {
+//       sanitizedParts.push({
+//         type: 'reasoning',
+//         text: reasoningText
+//       });
+//     }
+
+//     return {
+//       ...message,
+//       content: {
+//         ...messageContent,
+//         parts: sanitizedParts
+//       }
+//     };
+//   });
+
+//   // Filter out messages with no parts
+//   return sanitizedMessages.filter((message) => {
+//     const messageContent = message.content as any;
+//     const parts = messageContent?.parts || [];
+//     return parts.length > 0;
+//   });
+// }
+
+// Convert UIMessage to database format
+export function convertUIMessageToDBFormat(
+  message: UIMessage,
+  chatId: string,
+  reasoningText?: string
+): {
+  id: string;
+  chatId: string;
+  role: string;
+  content: any;
+  createdAt: string;
+} {
+  const parts: any[] = [...(message.parts || [])];
+
+  // Add reasoning text to assistant messages if provided
+  if (reasoningText && message.role === 'assistant') {
+    parts.push({
+      type: 'reasoning',
+      text: reasoningText
+    });
+  }
+
+  return {
+    id: message.id || generateUUID(),
+    chatId,
+    role: message.role,
+    content: { parts }, // Store parts in content as jsonb
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export function sanitizeUIMessages(messages: Array<UIMessage>): Array<UIMessage> {
+  const sanitizedMessages = messages.map((message) => {
+    if (message.role !== 'assistant') return message;
+
+    const parts = message.parts || [];
+    
+    // Collect all tool call IDs that have results
+    const toolResultIds: Array<string> = [];
+    
+    for (const part of parts) {
+      if (part.type?.startsWith('tool-') && 'state' in part && 'toolCallId' in part) {
+        if (part.state === 'output-available' && part.toolCallId) {
+          toolResultIds.push(part.toolCallId);
         }
       }
     }
-  }
 
-  const messagesBySanitizedContent = messages.map((message) => {
-    if (message.role !== 'assistant') return message;
-
-    if (typeof message.content === 'string') return message;
-
-    const sanitizedContent = message.content.filter((content) =>
-      content.type === 'tool-call'
-        ? toolResultIds.includes(content.toolCallId)
-        : content.type === 'text'
-          ? content.text.length > 0
-          : true,
-    );
-
-    if (reasoning) {
-      // @ts-expect-error: reasoning message parts in sdk is wip
-      sanitizedContent.push({ type: 'reasoning', reasoning });
-    }
-
-    return {
-      ...message,
-      content: sanitizedContent,
-    };
-  });
-
-  return messagesBySanitizedContent.filter(
-    (message) => message.content.length > 0,
-  );
-}
-
-export function sanitizeUIMessages(messages: Array<Message>): Array<Message> {
-  const messagesBySanitizedToolInvocations = messages.map((message) => {
-    if (message.role !== 'assistant') return message;
-
-    if (!message.toolInvocations) return message;
-
-    const toolResultIds: Array<string> = [];
-
-    for (const toolInvocation of message.toolInvocations) {
-      if (toolInvocation.state === 'result') {
-        toolResultIds.push(toolInvocation.toolCallId);
+    // Filter parts: only keep tool parts that have results or are results themselves
+    const sanitizedParts = parts.filter((part) => {
+      if (part.type?.startsWith('tool-') && 'state' in part && 'toolCallId' in part) {
+        return part.state === 'output-available' || toolResultIds.includes(part.toolCallId);
       }
-    }
-
-    const sanitizedToolInvocations = message.toolInvocations.filter(
-      (toolInvocation) =>
-        toolInvocation.state === 'result' ||
-        toolResultIds.includes(toolInvocation.toolCallId),
-    );
+      return true; // Keep all non-tool parts
+    });
 
     return {
       ...message,
-      toolInvocations: sanitizedToolInvocations,
+      parts: sanitizedParts,
     };
   });
 
-  return messagesBySanitizedToolInvocations.filter(
-    (message) =>
-      message.content.length > 0 ||
-      (message.toolInvocations && message.toolInvocations.length > 0),
-  );
+  // Filter out messages with no parts
+  return sanitizedMessages.filter((message) => {
+    const parts = message.parts || [];
+    return parts.length > 0;
+  });
 }
 
-export function getMostRecentUserMessage(messages: Array<Message>) {
+export function getMostRecentUserMessage(messages: Array<UIMessage>) {
   const userMessages = messages.filter((message) => message.role === 'user');
   return userMessages.at(-1);
 }

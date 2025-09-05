@@ -1,19 +1,18 @@
-import { DataStreamWriter, tool } from 'ai';
-import { z } from 'zod';
+import { UIMessageStreamWriter, tool } from 'ai';
+import { z } from 'zod/v3';
 import { Session } from '@/lib/auth';
 import { saveDocument } from '@/lib/db/queries';
 import { generateUUID } from '@/lib/utils';
 
 interface CreateDocumentProps {
   session: Session;
-  dataStream: DataStreamWriter;
 }
 
-export const createDocument = ({ session, dataStream }: CreateDocumentProps) =>
+export const createDocument = ({ session }: CreateDocumentProps) =>
   tool({
     description:
       'Creates a new document record in the database, streams back its ID so the editor can initialize it.',
-    parameters: z.object({
+    inputSchema: z.object({
       title: z.string().describe('The title for the new document.'),
     }),
     execute: async ({ title }) => {
@@ -29,14 +28,11 @@ export const createDocument = ({ session, dataStream }: CreateDocumentProps) =>
           userId,
         });
 
-        // Stream the new ID to the client
-        dataStream.writeData({ type: 'id', content: newDocumentId });
-        // Delay to allow page navigation and editor initialization
-        await new Promise((resolve) => setTimeout(resolve, 4500));
-        // Signal that creation is finished
-        dataStream.writeData({ type: 'finish', content: '' });
-
-        return { content: 'New document created.' };
+        return { 
+          documentId: newDocumentId,
+          title,
+          message: 'New document created successfully'
+        };
       } catch (error: any) {
         console.error('[AI Tool] Failed to create document:', error);
         throw new Error(`Failed to create document: ${error.message || error}`);

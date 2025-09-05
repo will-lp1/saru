@@ -1,33 +1,31 @@
-import { DataStreamWriter, tool } from 'ai';
-import { z } from 'zod';
+import { tool } from 'ai';
+import { z } from 'zod/v3';
 import { Session } from '@/lib/auth';
 import { createTextDocument } from '@/lib/ai/document-helpers';
 
 interface CreateDocumentProps {
   session: Session;
-  dataStream: DataStreamWriter;
 }
 
-export const streamingDocument = ({ dataStream }: CreateDocumentProps) =>
+export const streamingDocument = ({ session }: CreateDocumentProps) =>
   tool({
-    description:
-      'Generates content based on a title or prompt and streams it into the active document view. Use this to start writing or add content.',
-    parameters: z.object({
+    description: 'Generates content based on a title or prompt for the active document.',
+    inputSchema: z.object({
       title: z.string().describe('The title or topic to generate content about.'),
     }),
     execute: async ({ title }) => {
+      try {
+        const generatedContent = await createTextDocument({ title });
 
-      await createTextDocument({
-        title,
-        dataStream,
-      });
-
-      dataStream.writeData({ type: 'force-save', content: '' });
-      
-      dataStream.writeData({ type: 'finish', content: '' });
-
-      return {
-        content: 'Content generation streamed.',
-      };
+        return {
+          title,
+          content: generatedContent,
+          action: 'document-generated',
+          message: 'Content generation completed.',
+        };
+      } catch (error: any) {
+        console.error('[AI Tool] streamingDocument failed:', error);
+        throw new Error(`Failed to generate document content: ${error.message || error}`);
+      }
     },
   });
