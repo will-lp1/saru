@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     const { text } = await generateText({
       model: myProvider.languageModel('artifact-model'),
       prompt,
-      maxTokens: 20,
+      maxOutputTokens: 20,
       temperature: 0.3,
     });
 
