@@ -27,7 +27,7 @@ const Editor = dynamic(() => import('@/components/document/editor').then(mod => 
   loading: () => <EditorSkeleton />,
 });
 
-const EditorSwitcher = dynamic(() => import('@/components/document/editor-switcher').then(mod => mod.EditorSwitcher), {
+const MilkdownEditor = dynamic(() => import('@/components/document/milkdown-editor'), {
   ssr: false,
   loading: () => <EditorSkeleton />,
 });
@@ -159,10 +159,10 @@ export function AlwaysVisibleArtifact({
 
   const createDocument = async (params: { title: string; content: string; chatId: string | null; navigateAfterCreate?: boolean; providedId?: string }) => {
     setIsCreatingDocument(true);
-    
+
     try {
       const documentId = params.providedId || generateUUID();
-      
+
       const response = await fetch('/api/document', {
         method: 'PUT',
         headers: {
@@ -175,14 +175,14 @@ export function AlwaysVisibleArtifact({
           kind: 'text',
         }),
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to create document');
       }
-      
+
       const newDocument = await response.json();
-      
+
       setDocument(curr => ({
         ...curr,
         documentId: documentId,
@@ -190,7 +190,7 @@ export function AlwaysVisibleArtifact({
         content: params.content,
         status: 'idle',
       }));
-      
+
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('document-created', {
           detail: {
@@ -198,11 +198,11 @@ export function AlwaysVisibleArtifact({
           }
         }));
       }
-      
+
       if (params.navigateAfterCreate) {
         router.push(`/documents/${documentId}`);
       }
-      
+
       return newDocument;
     } catch (error) {
       console.error('[useDocumentUtils] Error creating document:', error);
@@ -222,10 +222,10 @@ export function AlwaysVisibleArtifact({
   }, [documents, currentVersionIndex]);
 
   const latestDocument = useMemo(() => {
-      if (documents && documents.length > 0) {
-          return documents[documents.length - 1];
-      }
-      return null;
+    if (documents && documents.length > 0) {
+      return documents[documents.length - 1];
+    }
+    return null;
   }, [documents]);
 
   useEffect(() => {
@@ -282,10 +282,8 @@ export function AlwaysVisibleArtifact({
       if (originalDocumentId !== document.documentId) return;
 
 
-      console.log('[DocumentWorkspace] Handling version fork from index', versionIndex, 'timestamp', forkFromTimestamp);
 
       try {
-        // Get the current document title for naming the fork
         const currentDoc = documents[documents.length - 1];
         const forkTitle = `${currentDoc?.title || 'Document'} (Fork)`;
 
@@ -680,7 +678,7 @@ export function AlwaysVisibleArtifact({
             <EditorSkeleton />
           ) : (
             <Suspense fallback={<EditorSkeleton />}>
-              <EditorSwitcher
+              <MilkdownEditor
                 key={`${editorDocumentId}-${currentVersionIndex}`}
                 content={editorContent}
                 status={'idle'}

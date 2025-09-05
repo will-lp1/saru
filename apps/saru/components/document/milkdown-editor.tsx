@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Editor, rootCtx, defaultValueCtx, editorViewOptionsCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { history } from "@milkdown/plugin-history";
@@ -9,8 +9,14 @@ import { clipboard } from "@milkdown/plugin-clipboard";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
 import { replaceAll } from "@milkdown/kit/utils";
 import type { EditorView } from "@milkdown/kit/prose/view";
+import { gfm } from "@milkdown/preset-gfm";
+import { math } from "@milkdown/plugin-math";
+import "katex/dist/katex.min.css";
 import { EditorToolbar } from "@/components/document/editor-toolbar";
 import { updateDocumentContent } from "@/app/documents/actions";
+import { buildDocumentFromContent, buildContentFromDocument } from "@/lib/editor/functions";
+import { createSaveFunction } from "@/lib/editor/save-plugin";
+import { setActiveEditorView } from "@/lib/editor/editor-state";
 
 type MilkdownEditorProps = {
     content: string;
@@ -39,23 +45,26 @@ function MilkdownEditor({
     const initializedRef = useRef(false);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const currentContentRef = useRef<string>('');
+    const currentDocumentIdRef = useRef(documentId);
 
-    // Helper function to update content using Milkdown's replaceAll utility
+    useEffect(() => {
+        currentDocumentIdRef.current = documentId;
+    }, [documentId]);
+
+    const performSave = useCallback(createSaveFunction(currentDocumentIdRef), []);
+
     const updateEditorContent = async (editor: Editor, newContent: string) => {
         try {
             await editor.action(replaceAll(newContent));
             currentContentRef.current = newContent;
-            console.log('[MilkdownEditor] Content updated successfully');
         } catch (error) {
             console.error('[MilkdownEditor] Failed to update content:', error);
-            // Fallback: try to update via direct DOM manipulation if available
             try {
                 await editor.action((ctx) => {
                     const view = ctx.get('editorView') as unknown as EditorView;
                     if (view && view.state) {
                         const { state } = view;
                         const { schema } = state;
-                        // Simple fallback: create a paragraph with the new content
                         const node = schema.nodes.paragraph.create({}, [schema.text(newContent)]);
                         const doc = schema.topNodeType.create({}, [node]);
                         const tr = state.tr.replaceWith(0, state.doc.content.size, doc.content);
@@ -69,7 +78,6 @@ function MilkdownEditor({
         }
     };
 
-    // Initialize Milkdown editor
     useEffect(() => {
         if (!editorRef.current || initializedRef.current) return;
 
@@ -84,6 +92,8 @@ function MilkdownEditor({
                         });
                     })
                     .use(commonmark)
+                    .use(gfm)
+                    .use(math)
                     .use(history)
                     .use(cursor)
                     .use(clipboard)
@@ -91,30 +101,46 @@ function MilkdownEditor({
 
                 const instance = await editor.create();
 
-                console.log("Milkdown editor is ready!");
                 editorInstanceRef.current = instance;
                 setIsReady(true);
                 initializedRef.current = true;
                 currentContentRef.current = content || "";
 
-                // Set up content change listener for database saving
+                instance.action((ctx) => {
+                    const view = ctx.get('editorView') as unknown as EditorView;
+                    if (view) {
+                        setActiveEditorView(view);
+
+                        view.dom.addEventListener('focus', () => {
+                            setActiveEditorView(view);
+                        });
+
+                        view.dom.addEventListener('blur', () => {
+                            // Don't clear active editor on blur
+                        });
+
+                        setTimeout(() => {
+                            setActiveEditorView(view);
+                        }, 100);
+                    }
+                });
+
                 instance.action((ctx) => {
                     const listenerInstance = ctx.get(listenerCtx);
                     listenerInstance.markdownUpdated((_ctx, markdown: string) => {
                         currentContentRef.current = markdown;
 
-                        // Debounced save to database
                         if (saveTimeoutRef.current) {
                             clearTimeout(saveTimeoutRef.current);
                         }
                         saveTimeoutRef.current = setTimeout(async () => {
                             try {
                                 if (documentId && documentId !== 'init' && documentId.length > 10) {
-                                    await updateDocumentContent({
-                                        id: documentId,
-                                        content: markdown,
-                                    });
-                                    console.log('[MilkdownEditor] Content saved successfully');
+                                    await performSave(markdown);
+
+                                    window.dispatchEvent(new CustomEvent('document-updated', {
+                                        detail: { documentId }
+                                    }));
                                 }
                             } catch (error) {
                                 console.error('[MilkdownEditor] Save failed:', error);
@@ -135,6 +161,8 @@ function MilkdownEditor({
                 clearTimeout(saveTimeoutRef.current);
             }
             if (editorInstanceRef.current) {
+                setActiveEditorView(null);
+
                 editorInstanceRef.current.destroy();
                 editorInstanceRef.current = null;
                 setIsReady(false);
@@ -143,7 +171,6 @@ function MilkdownEditor({
         };
     }, [documentId, isCurrentVersion]);
 
-    // Handle AI streaming and events
     useEffect(() => {
         if (!editorInstanceRef.current || !isReady) return;
 
@@ -151,10 +178,28 @@ function MilkdownEditor({
             const event = evt as CustomEvent;
             const { documentId: streamDocumentId, content: streamContent } = event.detail;
 
-            if (streamDocumentId !== documentId || !editorInstanceRef.current) return;
+            if (streamDocumentId !== documentId || !editorInstanceRef.current) {
+                return;
+            }
 
-            const newContent = currentContentRef.current + streamContent;
-            console.log('[MilkdownEditor] Streaming content update');
+            let currentContent = currentContentRef.current;
+
+            try {
+                editorInstanceRef.current.action((ctx) => {
+                    const view = ctx.get('editorView') as unknown as EditorView;
+                    if (view && view.state) {
+                        const editorContent = buildContentFromDocument(view.state.doc);
+                        if (editorContent && editorContent !== currentContentRef.current) {
+                            currentContentRef.current = editorContent;
+                            currentContent = editorContent;
+                        }
+                    }
+                });
+            } catch (error) {
+                console.warn('[MilkdownEditor] Could not get current content from editor, using ref');
+            }
+
+            const newContent = currentContent + streamContent;
             updateEditorContent(editorInstanceRef.current, newContent);
         };
 
@@ -162,12 +207,14 @@ function MilkdownEditor({
             const event = evt as CustomEvent;
             const { type, content: eventContent } = event.detail;
 
-            if (type !== 'documentUpdate' || !eventContent || !editorInstanceRef.current) return;
+            if (type !== 'documentUpdate' || !eventContent || !editorInstanceRef.current) {
+                return;
+            }
 
             try {
                 const updateData = JSON.parse(eventContent);
                 if (updateData.newContent) {
-                    console.log('[MilkdownEditor] Document update received');
+                    currentContentRef.current = updateData.newContent;
                     updateEditorContent(editorInstanceRef.current, updateData.newContent);
                 }
             } catch (error) {
@@ -187,6 +234,20 @@ function MilkdownEditor({
             const event = evt as CustomEvent;
             const { documentId: finishedDocumentId } = event.detail;
             if (finishedDocumentId === documentId) {
+                if (editorInstanceRef.current) {
+                    try {
+                        editorInstanceRef.current.action((ctx) => {
+                            const view = ctx.get('editorView') as unknown as EditorView;
+                            if (view && view.state) {
+                                const editorContent = buildContentFromDocument(view.state.doc);
+                                currentContentRef.current = editorContent;
+                            }
+                        });
+                    } catch (error) {
+                        console.warn('[MilkdownEditor] Could not sync content ref after AI finish:', error);
+                    }
+                }
+
                 onStatusChange?.({ status: 'saved' });
             }
         };
@@ -204,12 +265,10 @@ function MilkdownEditor({
         };
     }, [documentId, onStatusChange, isReady]);
 
-    // Update editor content when content prop changes
     useEffect(() => {
         if (!editorInstanceRef.current || !isReady || !content) return;
 
         if (content !== currentContentRef.current) {
-            console.log('[MilkdownEditor] Loading new content');
             updateEditorContent(editorInstanceRef.current, content);
         }
     }, [content, isReady]);
