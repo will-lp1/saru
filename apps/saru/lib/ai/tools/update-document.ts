@@ -45,7 +45,20 @@ export const updateDocument = ({ session: _session, documentId: defaultDocumentI
         }
         const originalContent = document.content || '';
 
-        const prompt = `You are an expert editor. Here is the ORIGINAL document:\n\n${originalContent}\n\n---\n\nTASK: Apply the following edits.\n- Make only the minimal changes required to satisfy the description.\n- Keep paragraphs, sentences, and words that do **not** need to change exactly as they are.\n- Do **not** paraphrase or re-flow content unless strictly necessary.\n- Preserve existing formatting and line breaks.\n\nReturn ONLY the updated document with no additional commentary.\n\nDESCRIPTION: "${description}"`;
+        // const prompt = `You are an expert editor. Here is the ORIGINAL document:\n\n${originalContent}\n\n---\n\nTASK: Apply the following edits.\n- Make only the minimal changes required to satisfy the description.\n- Keep paragraphs, sentences, and words that do **not** need to change exactly as they are.\n- Do **not** paraphrase or re-flow content unless strictly necessary.\n- Preserve existing formatting and line breaks.\n\nReturn ONLY the updated document with no additional commentary.\n\nDESCRIPTION: "${description}"`;
+
+        const prompt = `You are an expert editor. Here is the ORIGINAL document:
+          ${originalContent}
+
+          INSTRUCTIONS:
+          - Make only the minimal changes required to satisfy the description.
+          - Keep paragraphs, sentences, and words that do **not** need to change exactly as they are.
+          - Do **not** paraphrase or re-flow content unless strictly necessary.
+          - Preserve existing formatting and line breaks.
+          - Return ONLY the updated document content with no additional commentary or separators.
+
+          EDIT DESCRIPTION: "${description}"
+          UPDATED DOCUMENT:`;
 
         const { text: newContent } = await generateText({
           model: myProvider.languageModel('artifact-model'),
