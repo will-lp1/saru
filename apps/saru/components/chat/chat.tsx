@@ -1,7 +1,8 @@
 'use client';
 
-import type { Attachment, UIMessage, ChatRequestOptions } from 'ai';
+import type { UIMessage, ChatRequestOptions } from 'ai';
 import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 import { useState, useEffect } from 'react';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { generateUUID } from '@/lib/utils';
@@ -12,7 +13,7 @@ import { FileText } from 'lucide-react';
 import { MentionedDocument } from './multimodal-input';
 import { useDocument } from '@/hooks/use-document';
 import { DEFAULT_CHAT_MODEL } from '@/lib/ai/models';
-import { DataStreamHandler } from '@/components/data-stream-handler';
+// import { DataStreamHandler } from '@/components/data-stream-handler';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { useAiOptionsValue } from '@/hooks/ai-options';
@@ -42,6 +43,9 @@ export function Chat({
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [requestedChatLoadId, setRequestedChatLoadId] = useState<string | null>(null);
 
+  // Input state management (now manual in v5)
+  const [input, setInput] = useState('');
+
   // Callback function to update the model state
   const handleModelChange = (newModelId: string) => {
     setSelectedChatModel(newModelId);
@@ -66,38 +70,21 @@ export function Chat({
   const {
     messages,
     setMessages,
-    handleSubmit,
-    input,
-    setInput,
-    append,
+    sendMessage,
     status,
     stop,
-    reload,
-    data,
-    error
+    regenerate,
   } = useChat({
+  transport: new DefaultChatTransport({
     api: '/api/chat',
-    id: chatId,
-    initialMessages,
-    body: {
-      id: chatId,
-      selectedChatModel: selectedChatModel,
-      aiOptions: {
-        writingStyleSummary,
-        applyStyle,
-      },
-    },
-    onResponse: (res) => {
-      if (res.status === 401) {
-        console.error('Chat Unauthorized');
-      }
-    },
-    onError: (err) => {
-      console.error('Chat Error:', err);
-    },
+  }),
+  messages: initialMessages,
+  onError: (err) => {
+    console.error('Chat Error:', err);
+  },
   });
 
-  const [attachments, setAttachments] = useState<Array<Attachment>>([]);
+  const [attachments, setAttachments] = useState<FileList | null>(null);
 
   const handleMentionsChange = (mentions: MentionedDocument[]) => {
     setConfirmedMentions(mentions);
@@ -214,7 +201,6 @@ export function Chat({
       setMessages([]);
       setInput('');
       setChatId(newChatId);
-      console.log('[Chat Component] Chat state reset. New ID:', newChatId);
     };
 
     window.addEventListener('reset-chat-state', handleReset);
@@ -224,7 +210,7 @@ export function Chat({
     };
   }, [setMessages, setInput, setChatId]);
 
-  const wrappedSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
     if (documentContextActive && messages.length === initialMessages.length) {
@@ -246,19 +232,29 @@ export function Chat({
     if (currentDocId && currentDocId !== 'init') {
       contextData.activeDocumentId = currentDocId;
     } else {
-      contextData.activeDocumentId = null ;
+      contextData.activeDocumentId = null;
     }
     
     if (confirmedMentions.length > 0) {
       contextData.mentionedDocumentIds = confirmedMentions.map(doc => doc.id);
     }
     
-    const options: ChatRequestOptions = {
-      data: contextData,
-    };
+    // Send message with v5 API
+    sendMessage(
+    { parts: [{ type: 'text', text: input }] },
+    {
+      body: {
+        chatId: chatId,
+        selectedChatModel: selectedChatModel,
+        aiOptions: { writingStyleSummary, applyStyle },
+        data: contextData,
+      },
+    }
+  );
 
-    handleSubmit(e, options);
-
+    // Clear input and attachments
+    setInput('');
+    setAttachments(null);
     setConfirmedMentions([]);
   };
 
@@ -282,7 +278,7 @@ export function Chat({
             status={status}
             messages={messages}
             setMessages={setMessages}
-            reload={reload}
+            regenerate={regenerate} // Updated from reload to regenerate
             isReadonly={isReadonly}
             isArtifactVisible={false}
           />
@@ -291,9 +287,10 @@ export function Chat({
 
       {!isReadonly && (
         <div className="p-4 border-t border-zinc-200 dark:border-zinc-700">
-          <form onSubmit={wrappedSubmit}>
+          <form onSubmit={handleSubmit}>
             <MultimodalInput
               chatId={chatId}
+              selectedChatModel={selectedChatModel}
               input={input}
               setInput={setInput}
               handleSubmit={handleSubmit}
@@ -303,7 +300,7 @@ export function Chat({
               setAttachments={setAttachments}
               messages={messages}
               setMessages={setMessages}
-              append={append}
+              sendMessage={sendMessage} // Updated from append to sendMessage
               confirmedMentions={confirmedMentions}
               onMentionsChange={handleMentionsChange}
             />
@@ -311,7 +308,7 @@ export function Chat({
         </div>
       )}
 
-      <DataStreamHandler id={chatId} />
+      {/* <DataStreamHandler id={chatId} /> */}
     </div>
   );
 }
