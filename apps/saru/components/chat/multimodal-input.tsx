@@ -1,10 +1,8 @@
 'use client';
 
 import type {
-  Attachment,
   ChatRequestOptions,
-  CreateMessage,
-  Message,
+  UIMessage,
 } from 'ai';
 import cx from 'classnames';
 import type React from 'react';
@@ -29,9 +27,10 @@ import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { SuggestedActions } from '../suggested-actions';
 import equal from 'fast-deep-equal';
-import { UseChatHelpers, UseChatOptions } from '@ai-sdk/react';
+import { UseChatHelpers, UseChatOptions, UseCompletionHelpers } from '@ai-sdk/react';
 import { useDocument } from '@/hooks/use-document';
 import { cn, generateUUID } from '@/lib/utils';
+import { useAiOptionsValue } from '@/hooks/ai-options';
 
 interface DocumentSuggestion extends SuggestionDataItem {
   id: string;
@@ -121,6 +120,7 @@ const mentionStyleDark: React.CSSProperties = {
 
 function PureMultimodalInput({
   chatId,
+  selectedChatModel,
   input,
   setInput,
   status,
@@ -129,23 +129,24 @@ function PureMultimodalInput({
   setAttachments,
   messages,
   setMessages,
-  append,
+  sendMessage, // Updated from append to sendMessage
   handleSubmit,
   className,
   confirmedMentions,
   onMentionsChange,
 }: {
   chatId: string;
-  input: UseChatHelpers['input'];
-  setInput: UseChatHelpers['setInput'];
-  status: UseChatHelpers['status'];
+  selectedChatModel: string,
+  input: string; // Now plain string instead of UseCompletionHelpers['input']
+  setInput: (input: string) => void; // Now plain setter instead of UseCompletionHelpers['setInput']
+  status: UseChatHelpers<UIMessage>['status'];
   stop: () => void;
-  attachments: Array<Attachment>;
-  setAttachments: Dispatch<SetStateAction<Array<Attachment>>>;
-  messages: Array<Message>;
-  setMessages: Dispatch<SetStateAction<Array<Message>>>;
-  append: UseChatHelpers['append'];
-  handleSubmit: UseChatHelpers['handleSubmit'];
+  attachments: FileList | null;
+  setAttachments: Dispatch<SetStateAction<FileList | null>>;
+  messages: Array<UIMessage>;
+  setMessages: Dispatch<SetStateAction<Array<UIMessage>>>;
+  sendMessage: UseChatHelpers<UIMessage>['sendMessage']; // Updated type
+  handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void; // Custom form handler
   className?: string;
   confirmedMentions: MentionedDocument[];
   onMentionsChange: (mentions: MentionedDocument[]) => void;
@@ -161,11 +162,14 @@ function PureMultimodalInput({
   
   const [inputValue, setInputValue] = useState(input);
   const [markupValue, setMarkupValue] = useState('');
+  const { writingStyleSummary, applyStyle } = useAiOptionsValue();
 
   const [localStorageInput, setLocalStorageInput] = useLocalStorage('input', '');
+  
   useEffect(() => {
     const initialVal = localStorageInput || '';
     setInputValue(initialVal);
+    setInput(initialVal); // Sync with parent
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -212,27 +216,56 @@ function PureMultimodalInput({
       contextData.mentionedDocumentIds = confirmedMentions.map(doc => doc.id);
     }
     
-    const options: ChatRequestOptions = {
-      experimental_attachments: attachments,
+    // Create message parts
+    const parts: any[] = [{ type: 'text', text: inputValue }];
+    
+    // Add file attachments as parts if any exist
+    if (attachments && attachments.length > 0) {
+      // Note: You'll need to handle file conversion to the appropriate format
+      // This depends on how your backend expects file attachments
+      Array.from(attachments).forEach(file => {
+        parts.push({
+          type: 'file',
+          // Add file properties as needed by your backend
+          name: file.name,
+          // You may need to convert to base64 or handle differently
+        });
+      });
+    }
+
+    const requestBody = {
+      chatId: chatId,
+      selectedChatModel: selectedChatModel,
+      aiOptions: { writingStyleSummary, applyStyle },
       data: contextData,
     };
-    
-    handleSubmit(undefined, options);
+  
+    sendMessage(
+      { 
+        parts: parts
+      },
+      {
+        body: requestBody,
+      }
+    );
 
-    setAttachments([]);
+    setAttachments(null);
     setInputValue('');
     setMarkupValue('');
+    setInput(''); // Clear parent input state
     onMentionsChange([]); // Clear confirmed mentions in parent
 
     if (width && width > 768) {
       mentionInputRef.current?.focus();
     }
   }, [
+    inputValue,
     attachments,
     currentDoc.documentId,
     confirmedMentions,
-    handleSubmit,
+    sendMessage,
     setAttachments,
+    setInput,
     onMentionsChange,
     width,
   ]);
@@ -306,10 +339,29 @@ function PureMultimodalInput({
         (attachment) => attachment !== undefined,
       );
 
-      setAttachments((currentAttachments) => [
-        ...currentAttachments,
-        ...successfullyUploadedAttachments,
-      ]);
+      setAttachments((currentAttachments) => {
+        const currentArray = currentAttachments ? Array.from(currentAttachments) : [];
+        const newFileList = new DataTransfer();
+        
+        // Add existing files
+        currentArray.forEach(file => {
+          if (file instanceof File) {
+            newFileList.items.add(file);
+          }
+        });
+        
+        // Add new files
+        successfullyUploadedAttachments.forEach(attachment => {
+          if (attachment) {
+            // You'll need to create File objects from your upload response
+            // This is a simplified example - adjust based on your upload response format
+            const file = new File([''], attachment.name, { type: attachment.contentType });
+            newFileList.items.add(file);
+          }
+        });
+        
+        return newFileList.files;
+      });
     } catch (error) {
       console.error('Error uploading files!', error);
     } finally {
@@ -357,10 +409,10 @@ function PureMultimodalInput({
   return (
     <div className="relative w-full flex flex-col gap-4" onKeyDown={handleKeyDown}>
       {messages.length === 0 &&
-        attachments.length === 0 &&
+        attachments === null &&
         uploadQueue.length === 0 &&
         confirmedMentions.length === 0 && (
-          <SuggestedActions append={append} chatId={chatId} />
+          <SuggestedActions sendMessage={sendMessage} chatId={chatId} />
         )}
 
       <input
@@ -430,7 +482,7 @@ function PureStopButton({
   setMessages,
 }: {
   stop: () => void;
-  setMessages: Dispatch<SetStateAction<Array<Message>>>;
+  setMessages: Dispatch<SetStateAction<Array<UIMessage>>>;
 }) {
   return (
     <Button
