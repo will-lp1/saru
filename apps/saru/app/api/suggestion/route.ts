@@ -182,7 +182,7 @@ Only output the resulting text, with no preamble or explanation.`;
     system: updateDocumentPrompt(contentToModify, 'text'),
     experimental_transform: smoothStream({ chunking: 'word' }),
     prompt: promptContext,
-    experimental_providerMetadata: {
+    providerOptions: {
       openai: {
         prediction: {
           type: 'content',
@@ -197,7 +197,7 @@ Only output the resulting text, with no preamble or explanation.`;
     const { type } = delta;
 
     if (type === 'text-delta') {
-      const { textDelta } = delta;
+      const { text: textDelta } = delta;
       draftContent += textDelta;
       chunkCount++;
 

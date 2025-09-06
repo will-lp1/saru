@@ -1,17 +1,17 @@
-import { Message } from 'ai';
+import { UIMessage } from 'ai';
 import { PreviewMessage, ThinkingMessage } from './message';
 import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
 import { Overview } from './overview';
-import { memo } from 'react';
+import { Dispatch, memo, SetStateAction } from 'react';
 import equal from 'fast-deep-equal';
 import { UseChatHelpers } from '@ai-sdk/react';
 
 interface MessagesProps {
   chatId: string;
-  status: UseChatHelpers['status'];
-  messages: Array<Message>;
-  setMessages: UseChatHelpers['setMessages'];
-  reload: UseChatHelpers['reload'];
+  status: UseChatHelpers<UIMessage>['status'];
+  messages: Array<UIMessage>;
+  setMessages: Dispatch<SetStateAction<Array<UIMessage>>>;
+  regenerate: UseChatHelpers<UIMessage>['regenerate'];
   isReadonly: boolean;
   isArtifactVisible: boolean;
 }
@@ -21,7 +21,7 @@ function PureMessages({
   status,
   messages,
   setMessages,
-  reload,
+  regenerate,
   isReadonly,
 }: MessagesProps) {
   const [messagesContainerRef, messagesEndRef] =
@@ -42,7 +42,7 @@ function PureMessages({
             message={message}
             isLoading={status === 'streaming' && messages.length - 1 === index}
             setMessages={setMessages}
-            reload={reload}
+            regenerate={regenerate}
             isReadonly={isReadonly}
           />
         );

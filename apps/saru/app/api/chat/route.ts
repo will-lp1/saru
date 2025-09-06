@@ -1,8 +1,12 @@
 import {
-  type Message,
-  createDataStreamResponse,
+  type UIMessage,
   streamText,
   smoothStream,
+  stepCountIs,
+  convertToModelMessages,
+  createUIMessageStream,
+  generateId,
+  createUIMessageStreamResponse,
 } from 'ai';
 import { systemPrompt } from '@/lib/ai/prompts';
 import {
@@ -17,9 +21,9 @@ import {
 import {
   generateUUID,
   getMostRecentUserMessage,
-  sanitizeResponseMessages,
   parseMessageContent,
   convertToUIMessages,
+  convertUIMessageToDBFormat,
 } from '@/lib/utils';
 import { generateTitleFromUserMessage } from '@/app/api/chat/actions/chat';
 import { updateDocument } from '@/lib/ai/tools/update-document';
@@ -30,7 +34,7 @@ import { myProvider } from '@/lib/ai/providers';
 import { auth } from "@/lib/auth";
 import { headers } from 'next/headers';
 import type { Document } from '@saru/db';
-import { createDocument as aiCreateDocument } from '@/lib/ai/tools/create-document';
+import { createDocument } from '@/lib/ai/tools/create-document';
 import { webSearch } from '@/lib/ai/tools/web-search';
 
 export const maxDuration = 60;
@@ -165,14 +169,16 @@ export async function POST(request: Request) {
     const userId = session.user.id;
 
     const {
-      id: chatId,
+      id: requestId,
+      chatId: chatId,
       messages,
       selectedChatModel,
       data: requestData,
       aiOptions,
     }: {
       id: string;
-      messages: Array<Message>;
+      chatId: string;
+      messages: Array<UIMessage>; // UIMessage type
       selectedChatModel: string;
       data?: { 
         activeDocumentId?: string | null;
@@ -235,129 +241,175 @@ export async function POST(request: Request) {
 
     const userMessageBackendId = generateUUID();
 
+    // Save user message with parts structure
     await saveMessages({
       messages: [{
         id: userMessageBackendId,
         chatId: chatId,
         role: userMessage.role,
-        content: parseMessageContent(userMessage.content),
+        content: parseMessageContent(userMessage.parts),
         createdAt: new Date().toISOString(),
       }],
     });
 
-    const toolSession = session;
-    if (!toolSession) {
-      return new Response('Internal Server Error', { status: 500 });
-    }
-
     let validatedActiveDocumentId: string | undefined;
-    let activeDoc: Document | null = null;
+    let activeDoc: any = null;
     if (activeDocumentId && uuidRegex.test(activeDocumentId)) {
-        try {
+      try {
         activeDoc = await getDocumentById({ id: activeDocumentId });
-          if (activeDoc) {
-            validatedActiveDocumentId = activeDocumentId;
-          }
+        if (activeDoc) {
+          validatedActiveDocumentId = activeDocumentId;
+        }
       } catch (error) {
         console.error(`Error loading active document ${activeDocumentId}:`, error);
       }
     }
 
-    return createDataStreamResponse({
-      execute: async (dataStream) => {
+    const dynamicSystemPrompt = await createEnhancedSystemPrompt({
+      selectedChatModel,
+      activeDocumentId,
+      mentionedDocumentIds,
+      customInstructions,
+      writingStyleSummary,
+      applyStyle,
+      availableTools: [], // Will be set below
+    });
+
+    const stream = createUIMessageStream({
+      originalMessages: messages, // ✅ Add this required property
+      execute: ({ writer }) => {
+        // Set up tools based on document state - NOW WITH WRITER SUPPORT
         const availableTools: any = {};
         const activeToolsList: Array<'createDocument' | 'streamingDocument' | 'updateDocument' | 'webSearch'> = [];
 
         if (!validatedActiveDocumentId) {
-          availableTools.createDocument = aiCreateDocument({ session: toolSession, dataStream });
-          availableTools.streamingDocument = streamingDocument({ session: toolSession, dataStream });
+          availableTools.createDocument = createDocument({ 
+            session, 
+            writer // Pass writer for streaming
+          });
+          availableTools.streamingDocument = streamingDocument({ 
+            session, 
+            writer // Pass writer for streaming
+          });
           activeToolsList.push('createDocument', 'streamingDocument');
-        } else if ((activeDoc?.content?.length ?? 0) === 0) {
-          availableTools.streamingDocument = streamingDocument({ session: toolSession, dataStream });
-          activeToolsList.push('streamingDocument');
-        } else {
-          availableTools.updateDocument = updateDocument({ session: toolSession, documentId: validatedActiveDocumentId });
+        } 
+        else if ((activeDoc?.content?.length ?? 0) === 0) {
+          console.log("yes it is called");
+          availableTools.createDocument = createDocument({ 
+            session, 
+            documentId: validatedActiveDocumentId,
+            writer // Pass writer for streaming
+          });
+          availableTools.streamingDocument = streamingDocument({ 
+            session, 
+            writer // Pass writer for streaming
+          });
+          activeToolsList.push('createDocument', 'streamingDocument');
+        }
+        else {
+          availableTools.updateDocument = updateDocument({ 
+            session, 
+            documentId: validatedActiveDocumentId,
+            writer // Pass writer for streaming
+          });
           activeToolsList.push('updateDocument');
         }
 
         if (process.env.TAVILY_API_KEY) {
-          availableTools.webSearch = webSearch({ session: toolSession });
+          availableTools.webSearch = webSearch({ 
+            session, 
+            writer // Pass writer for streaming
+          });
           activeToolsList.push('webSearch');
         }
 
-        const dynamicSystemPrompt = await createEnhancedSystemPrompt({
-          selectedChatModel,
-          activeDocumentId,
-          mentionedDocumentIds,
-          customInstructions,
-          writingStyleSummary,
-          applyStyle,
-          availableTools: activeToolsList,
+        // Stream initial status
+        writer.write({
+          type: 'data-status',
+          id: generateId(),
+          data: { 
+            type: 'chat-started',
+            activeDocumentId: validatedActiveDocumentId,
+            availableTools: activeToolsList
+          },
         });
 
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: dynamicSystemPrompt,
-          messages,
-          maxSteps: 2,
-          toolCallStreaming: true,
+          messages: convertToModelMessages(messages),
+          stopWhen: stepCountIs(2),
           experimental_activeTools: activeToolsList,
-          experimental_generateMessageId: generateUUID,
+
           experimental_transform: smoothStream({
             chunking: 'word',
           }),
-          tools: availableTools,
-          onFinish: async ({ response, reasoning }) => {
-            if (userId) {
-              try {
-                const sanitizedResponseMessages = sanitizeResponseMessages({
-                  messages: response.messages,
-                  reasoning,
-                });
 
-                await saveMessages({
-                  messages: sanitizedResponseMessages.map((message) => ({
-                    id: message.id,
-                    chatId: chatId,
-                    role: message.role,
-                    content: parseMessageContent(message.content),
-                    createdAt: new Date().toISOString(),
-                  })),
-                });
-                
-                await updateChatContextQuery({ 
-                  chatId, 
-                  userId,
-                  context: {
-                    active: activeDocumentId,
-                    mentioned: mentionedDocumentIds
-                  }
-                });
-              } catch (error) {
-                console.error('Failed to save chat/messages onFinish:', error);
-              }
-            }
-          },
+          tools: availableTools,
+
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,
             functionId: 'stream-text',
           },
+
+          // ❌ REMOVE onFinish from here - it belongs at the stream level
         });
 
-        result.consumeStream();
-
-        result.mergeIntoDataStream(dataStream, {
-          sendReasoning: true,
-        });
+        // Merge the streamText result into the writer
+        writer.merge(result.toUIMessageStream());
       },
-      onError: (error) => {
-        console.error('Stream error:', error);
-        return 'Sorry, something went wrong. Please try again.';
+
+      // ✅ MOVE onFinish to here - at the stream level
+      onFinish: async ({ messages: allMessages }) => {  
+
+        if (userId) {
+          try {
+            // Get only the assistant messages (response messages)
+            const responseMessages = allMessages.filter(msg => 
+              msg.role === 'assistant' && 
+              !allMessages.slice(0, allMessages.indexOf(msg)).some(original => original.id === msg.id)
+            );
+
+            // Convert response messages to database format
+            const dbMessages = responseMessages.map(msg => 
+              convertUIMessageToDBFormat(msg, chatId)
+            );
+
+            console.log("this is db messages", dbMessages);
+
+            if (dbMessages.length > 0) {
+              await saveMessages({
+                messages: dbMessages,
+              });
+            }
+            
+            await updateChatContextQuery({ 
+              chatId, 
+              userId,
+              context: {
+                active: activeDocumentId,
+                mentioned: mentionedDocumentIds
+              }
+            });
+
+            
+            
+          } catch (error) {
+            console.error('Failed to save chat/messages onFinish:', error);
+          }
+        }
       },
     });
+
+    return createUIMessageStreamResponse({ stream });
+
+
+
   } catch (error) {
     console.error('Chat route error:', error);
-    return NextResponse.json({ error }, { status: 400 });
+    // ✅ FIX: Handle unknown error type
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 

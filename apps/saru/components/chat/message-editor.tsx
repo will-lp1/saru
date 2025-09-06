@@ -1,17 +1,19 @@
 'use client';
 
-import { ChatRequestOptions, Message } from 'ai';
+import { ChatRequestOptions, UIMessage } from 'ai';
 import { Button } from '../ui/button';
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
 import { Textarea } from '../ui/textarea';
 import { deleteTrailingMessages } from '@/app/api/chat/actions/chat';
 import { toast } from 'sonner';
 
+// this component is not getting used anywhere as of now
+
 export type MessageEditorProps = {
-  message: Message;
+  message: UIMessage;
   setMode: Dispatch<SetStateAction<'view' | 'edit'>>;
   setMessages: (
-    messages: Message[] | ((messages: Message[]) => Message[]),
+    messages: UIMessage[] | ((messages: UIMessage[]) => UIMessage[]),
   ) => void;
   reload: (
     chatRequestOptions?: ChatRequestOptions,
@@ -26,10 +28,8 @@ export function MessageEditor({
 }: MessageEditorProps) {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Handle content properly regardless of type
-  const initialContent = typeof message.content === 'string' 
-    ? message.content 
-    : JSON.stringify(message.content);
+  const textParts = message.parts?.filter(part => part.type === 'text') || [];
+  const initialContent = textParts.map(part => part.text).join('');
     
   const [draftContent, setDraftContent] = useState<string>(initialContent);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
