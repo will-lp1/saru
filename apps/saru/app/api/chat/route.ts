@@ -4,6 +4,9 @@ import {
   smoothStream,
   stepCountIs,
   convertToModelMessages,
+  createUIMessageStream,
+  generateId,
+  createUIMessageStreamResponse,
 } from 'ai';
 import { systemPrompt } from '@/lib/ai/prompts';
 import {
@@ -175,7 +178,7 @@ export async function POST(request: Request) {
     }: {
       id: string;
       chatId: string;
-      messages: Array<UIMessage>;
+      messages: Array<UIMessage>; // UIMessage type
       selectedChatModel: string;
       data?: { 
         activeDocumentId?: string | null;
@@ -249,46 +252,17 @@ export async function POST(request: Request) {
       }],
     });
 
-    const toolSession = session;
-    if (!toolSession) {
-      return new Response('Internal Server Error', { status: 500 });
-    }
-
-
     let validatedActiveDocumentId: string | undefined;
-    let activeDoc: Document | null = null;
+    let activeDoc: any = null;
     if (activeDocumentId && uuidRegex.test(activeDocumentId)) {
-        try {
+      try {
         activeDoc = await getDocumentById({ id: activeDocumentId });
-          if (activeDoc) {
-            validatedActiveDocumentId = activeDocumentId;
-          }
+        if (activeDoc) {
+          validatedActiveDocumentId = activeDocumentId;
+        }
       } catch (error) {
         console.error(`Error loading active document ${activeDocumentId}:`, error);
       }
-    }
-
-    // Set up tools based on document state
-    const availableTools: any = {};
-    const activeToolsList: Array<'createDocument' | 'streamingDocument' | 'updateDocument' | 'webSearch'> = [];
-
-    if (!validatedActiveDocumentId) {
-      availableTools.createDocument = createDocument({ session: toolSession });
-      availableTools.streamingDocument = streamingDocument({ session: toolSession });
-      activeToolsList.push('createDocument', 'streamingDocument');
-    } 
-    else if ((activeDoc?.content?.length ?? 0) === 0) {
-      availableTools.streamingDocument = streamingDocument({ session: toolSession });
-      activeToolsList.push('streamingDocument');
-    }
-    else {
-      availableTools.updateDocument = updateDocument({ session: toolSession, documentId: validatedActiveDocumentId });
-      activeToolsList.push('updateDocument');
-    }
-
-    if (process.env.TAVILY_API_KEY) {
-      availableTools.webSearch = webSearch({ session: toolSession });
-      activeToolsList.push('webSearch');
     }
 
     const dynamicSystemPrompt = await createEnhancedSystemPrompt({
@@ -298,44 +272,116 @@ export async function POST(request: Request) {
       customInstructions,
       writingStyleSummary,
       applyStyle,
-      availableTools: activeToolsList,
+      availableTools: [], // Will be set below
     });
 
-    const result = streamText({
-      model: myProvider.languageModel(selectedChatModel),
-      system: dynamicSystemPrompt,
-      messages: convertToModelMessages(messages),
-      stopWhen: stepCountIs(2),
-      experimental_activeTools: activeToolsList,
+    const stream = createUIMessageStream({
+      originalMessages: messages, // ✅ Add this required property
+      execute: ({ writer }) => {
+        // Set up tools based on document state - NOW WITH WRITER SUPPORT
+        const availableTools: any = {};
+        const activeToolsList: Array<'createDocument' | 'streamingDocument' | 'updateDocument' | 'webSearch'> = [];
 
-      experimental_transform: smoothStream({
-        chunking: 'word',
-      }),
+        if (!validatedActiveDocumentId) {
+          availableTools.createDocument = createDocument({ 
+            session, 
+            writer // Pass writer for streaming
+          });
+          availableTools.streamingDocument = streamingDocument({ 
+            session, 
+            writer // Pass writer for streaming
+          });
+          activeToolsList.push('createDocument', 'streamingDocument');
+        } 
+        else if ((activeDoc?.content?.length ?? 0) === 0) {
+          console.log("yes it is called");
+          availableTools.createDocument = createDocument({ 
+            session, 
+            documentId: validatedActiveDocumentId,
+            writer // Pass writer for streaming
+          });
+          availableTools.streamingDocument = streamingDocument({ 
+            session, 
+            writer // Pass writer for streaming
+          });
+          activeToolsList.push('createDocument', 'streamingDocument');
+        }
+        else {
+          availableTools.updateDocument = updateDocument({ 
+            session, 
+            documentId: validatedActiveDocumentId,
+            writer // Pass writer for streaming
+          });
+          activeToolsList.push('updateDocument');
+        }
 
-      tools: availableTools,
+        if (process.env.TAVILY_API_KEY) {
+          availableTools.webSearch = webSearch({ 
+            session, 
+            writer // Pass writer for streaming
+          });
+          activeToolsList.push('webSearch');
+        }
 
-      experimental_telemetry: {
-        isEnabled: isProductionEnvironment,
-        functionId: 'stream-text',
-      }
-    });
+        // Stream initial status
+        writer.write({
+          type: 'data-status',
+          id: generateId(),
+          data: { 
+            type: 'chat-started',
+            activeDocumentId: validatedActiveDocumentId,
+            availableTools: activeToolsList
+          },
+        });
 
-    // Use AI SDK v5 pattern
-    return result.toUIMessageStreamResponse({
-      originalMessages: messages,
-      generateMessageId: () => generateUUID(),
-      onFinish: async ({ messages: allMessages, responseMessage }) => {
+        const result = streamText({
+          model: myProvider.languageModel(selectedChatModel),
+          system: dynamicSystemPrompt,
+          messages: convertToModelMessages(messages),
+          stopWhen: stepCountIs(2),
+          experimental_activeTools: activeToolsList,
+
+          experimental_transform: smoothStream({
+            chunking: 'word',
+          }),
+
+          tools: availableTools,
+
+          experimental_telemetry: {
+            isEnabled: isProductionEnvironment,
+            functionId: 'stream-text',
+          },
+
+          // ❌ REMOVE onFinish from here - it belongs at the stream level
+        });
+
+        // Merge the streamText result into the writer
+        writer.merge(result.toUIMessageStream());
+      },
+
+      // ✅ MOVE onFinish to here - at the stream level
+      onFinish: async ({ messages: allMessages }) => {  
+
         if (userId) {
           try {
-            // Convert the response message to database format
-            const dbMessage = convertUIMessageToDBFormat(
-              responseMessage,
-              chatId,
+            // Get only the assistant messages (response messages)
+            const responseMessages = allMessages.filter(msg => 
+              msg.role === 'assistant' && 
+              !allMessages.slice(0, allMessages.indexOf(msg)).some(original => original.id === msg.id)
             );
 
-            await saveMessages({
-              messages: [dbMessage],
-            });
+            // Convert response messages to database format
+            const dbMessages = responseMessages.map(msg => 
+              convertUIMessageToDBFormat(msg, chatId)
+            );
+
+            console.log("this is db messages", dbMessages);
+
+            if (dbMessages.length > 0) {
+              await saveMessages({
+                messages: dbMessages,
+              });
+            }
             
             await updateChatContextQuery({ 
               chatId, 
@@ -345,6 +391,9 @@ export async function POST(request: Request) {
                 mentioned: mentionedDocumentIds
               }
             });
+
+            
+            
           } catch (error) {
             console.error('Failed to save chat/messages onFinish:', error);
           }
@@ -352,9 +401,15 @@ export async function POST(request: Request) {
       },
     });
 
+    return createUIMessageStreamResponse({ stream });
+
+
+
   } catch (error) {
     console.error('Chat route error:', error);
-    return NextResponse.json({ error }, { status: 400 });
+    // ✅ FIX: Handle unknown error type
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 

@@ -28,7 +28,7 @@ export async function updateDocument(request: NextRequest, body: any): Promise<N
     // --- Input Validation --- 
     const { 
       id: documentId,
-      content: inputContent = '',
+      content: inputContent,
       kind: inputKind = 'text',
       chatId: inputChatId
     } = body;

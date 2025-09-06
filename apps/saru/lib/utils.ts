@@ -283,7 +283,7 @@ export function convertUIMessageToDBFormat(
   }
 
   return {
-    id: message.id || generateUUID(),
+    id: generateUUID(),
     chatId,
     role: message.role,
     content: { parts }, // Store parts in content as jsonb
