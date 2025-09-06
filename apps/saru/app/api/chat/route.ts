@@ -277,7 +277,7 @@ export async function POST(request: Request) {
       availableTools.streamingDocument = streamingDocument({ session: toolSession });
       activeToolsList.push('createDocument', 'streamingDocument');
     } 
-    else if ((activeDoc?.content?.length ?? 0) === 0 && activeDoc?.title === 'Document') {
+    else if ((activeDoc?.content?.length ?? 0) === 0) {
       availableTools.streamingDocument = streamingDocument({ session: toolSession });
       activeToolsList.push('streamingDocument');
     }
