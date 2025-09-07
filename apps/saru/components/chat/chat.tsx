@@ -83,7 +83,68 @@ export function Chat({
   },
   });
 
-
+  useEffect(() => {
+  messages.forEach((message, messageIndex) => {
+    message.parts.forEach((part, partIndex) => {
+      // Handle data parts with type assertion
+      if ('data' in part && part.data) {
+        const data = part.data as any; // Type assertion
+        
+        if (part.type === 'data-status') {
+          console.log("status update: ", data);
+        }
+        if (part.type === 'data-document') {
+          console.log("document updated: ", data);
+        }
+        if (part.type === 'data-editor') {
+          console.log("🔥 Dispatching editor event with:", data);
+          
+          window.dispatchEvent(new CustomEvent('editor:ai-content-update', {
+            detail: {
+              action: data.action,
+              documentId: data.documentId,
+              content: data.content,
+              markAsAI: data.markAsAI
+            }
+          }));
+        }
+      }
+      
+      // Handle tool results with type assertion
+      if (part.type === 'tool-updateDocument' && part.state === 'output-available') {
+        const output = part.output as any; // Type assertion
+        console.log("Tool updateDocument completed:", output);
+        
+        if (output && output.newContent) {
+          window.dispatchEvent(new CustomEvent('editor:ai-content-update', {
+            detail: {
+              action: 'update-content',
+              documentId: output.id,
+              content: output.newContent,
+              markAsAI: true
+            }
+          }));
+        }
+      }
+      
+      if (part.type === 'tool-streamingDocument' && part.state === 'output-available') {
+        const output = part.output as any; // Type assertion
+        console.log("Tool streamingDocument completed:", output);
+        
+        if (output && output.content) {
+          window.dispatchEvent(new CustomEvent('editor:ai-content-update', {
+            detail: {
+              action: 'update-content',
+              documentId: document.documentId,
+              content: output.content,
+              markAsAI: true
+            }
+          }));
+        }
+      }
+    });
+  });
+}, [messages, document.documentId]);
 
   const [attachments, setAttachments] = useState<FileList | null>(null);
 

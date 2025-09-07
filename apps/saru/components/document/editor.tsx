@@ -58,6 +58,40 @@ function PureEditor({
 
   const [synonymState, setSynonymState] = useState<{isOpen:boolean; synonyms:string[]; position:{x:number;y:number}; from:number; to:number; view: EditorView | null}>({isOpen:false,synonyms:[],position:{x:0,y:0},from:0,to:0,view:null});
 
+useEffect(() => {
+  const handleEditorDataStream = (event: CustomEvent) => {    
+    const { action, documentId: streamDocId, content, markAsAI } = event.detail as {
+      action: string,
+      documentId: string,
+      content: string,
+      markAsAI: boolean
+    };
+    
+    if (streamDocId === documentId && action === 'update-content') {
+      
+      const editorView = editorRef.current;
+      if (editorView && content) {
+        const newDoc = buildDocumentFromContent(content);
+        const transaction = editorView.state.tr.replaceWith(
+          0,
+          editorView.state.doc.content.size,
+          newDoc.content
+        );
+        transaction.setMeta("external", true);
+        transaction.setMeta("ai-generated", markAsAI);
+        editorView.dispatch(transaction);
+      }
+    } else {
+      console.log("🎯 DocumentId mismatch or wrong action, ignoring");
+    }
+  };
+  
+  window.addEventListener("editor:ai-content-update", handleEditorDataStream as EventListener);
+  return () => {
+    window.removeEventListener("editor:ai-content-update", handleEditorDataStream as EventListener);
+  };
+}, [documentId])
+
   useEffect(() => {
     const handleOpen = (e: Event) => {
       const detail = (e as CustomEvent).detail as {synonyms:string[]; position:{x:number;y:number}; from:number; to:number; view:EditorView};

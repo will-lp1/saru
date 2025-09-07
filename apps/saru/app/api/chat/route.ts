@@ -276,9 +276,8 @@ export async function POST(request: Request) {
     });
 
     const stream = createUIMessageStream({
-      originalMessages: messages, // ✅ Add this required property
+      originalMessages: messages, 
       execute: ({ writer }) => {
-        // Set up tools based on document state - NOW WITH WRITER SUPPORT
         const availableTools: any = {};
         const activeToolsList: Array<'createDocument' | 'streamingDocument' | 'updateDocument' | 'webSearch'> = [];
 
@@ -289,28 +288,23 @@ export async function POST(request: Request) {
           });
           availableTools.streamingDocument = streamingDocument({ 
             session, 
-            writer // Pass writer for streaming
+            writer 
           });
           activeToolsList.push('createDocument', 'streamingDocument');
         } 
-        else if ((activeDoc?.content?.length ?? 0) === 0) {
-          console.log("yes it is called");
-          availableTools.createDocument = createDocument({ 
-            session, 
-            documentId: validatedActiveDocumentId,
-            writer // Pass writer for streaming
-          });
+        else if (!activeDoc?.content || activeDoc.content.trim().length === 0) {
           availableTools.streamingDocument = streamingDocument({ 
-            session, 
-            writer // Pass writer for streaming
+            session,
+            documentId: validatedActiveDocumentId, 
+            writer
           });
-          activeToolsList.push('createDocument', 'streamingDocument');
+          activeToolsList.push('streamingDocument');
         }
         else {
           availableTools.updateDocument = updateDocument({ 
             session, 
             documentId: validatedActiveDocumentId,
-            writer // Pass writer for streaming
+            writer 
           });
           activeToolsList.push('updateDocument');
         }
@@ -318,7 +312,7 @@ export async function POST(request: Request) {
         if (process.env.TAVILY_API_KEY) {
           availableTools.webSearch = webSearch({ 
             session, 
-            writer // Pass writer for streaming
+            writer
           });
           activeToolsList.push('webSearch');
         }
@@ -351,15 +345,12 @@ export async function POST(request: Request) {
             isEnabled: isProductionEnvironment,
             functionId: 'stream-text',
           },
-
-          // ❌ REMOVE onFinish from here - it belongs at the stream level
         });
 
         // Merge the streamText result into the writer
         writer.merge(result.toUIMessageStream());
       },
 
-      // ✅ MOVE onFinish to here - at the stream level
       onFinish: async ({ messages: allMessages }) => {  
 
         if (userId) {
@@ -375,8 +366,6 @@ export async function POST(request: Request) {
               convertUIMessageToDBFormat(msg, chatId)
             );
 
-            console.log("this is db messages", dbMessages);
-
             if (dbMessages.length > 0) {
               await saveMessages({
                 messages: dbMessages,
@@ -391,9 +380,6 @@ export async function POST(request: Request) {
                 mentioned: mentionedDocumentIds
               }
             });
-
-            
-            
           } catch (error) {
             console.error('Failed to save chat/messages onFinish:', error);
           }
@@ -407,7 +393,6 @@ export async function POST(request: Request) {
 
   } catch (error) {
     console.error('Chat route error:', error);
-    // ✅ FIX: Handle unknown error type
     const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }

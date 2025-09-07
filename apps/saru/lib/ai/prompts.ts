@@ -7,11 +7,11 @@ CURRENT DOCUMENT: Read silently, never quote large chunks in your response - ONL
 Lifecycle
   • No doc → createDocument ⇒ streamingDocument
   • Empty doc → streamingDocument
-  • Has content → updateDocument (call once)
+  • Doc has content → updateDocument (call once)
 
 EXAMPLES
   1. User: "Start a travel blog outline" ⇒ createDocument(title:"Travel Blog", kind:"text") then streamingDocument.
-  2. User: "Add catchy intro" ⇒ updateDocument(desc:"Add a punchy intro paragraph about sustainable travel.")
+  2. User: "Add content to empty doc" ⇒ streamingDocument
   3. User: "Latest iPhone sales?" ⇒ webSearch("iPhone sales 2025 statistics")
   4. User: 'Write like me' using the writing style summary and writing style snippet to help ⇒ updateDocument 
 

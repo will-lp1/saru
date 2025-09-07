@@ -2,13 +2,15 @@ import { tool, UIMessageStreamWriter, generateId } from 'ai';
 import { z } from 'zod/v3';
 import { Session } from '@/lib/auth';
 import { createTextDocument } from '@/lib/ai/document-helpers';
+import { updateCurrentDocumentVersion } from '@/lib/db/queries';
 
 interface CreateDocumentProps {
   session: Session;
+  documentId?: string;
   writer: UIMessageStreamWriter; // Add writer for streaming
 }
 
-export const streamingDocument = ({ session, writer }: CreateDocumentProps) =>
+export const streamingDocument = ({ session, documentId, writer }: CreateDocumentProps) =>
   tool({
     description: 'Generates content based on a title or prompt for the active document.',
     inputSchema: z.object({
@@ -41,6 +43,7 @@ export const streamingDocument = ({ session, writer }: CreateDocumentProps) =>
         });
 
         const generatedContent = await createTextDocument({ title });
+        console.log("this is generated content from line 45", generatedContent);
 
         // Stream the generated content immediately
         writer.write({
@@ -53,6 +56,26 @@ export const streamingDocument = ({ session, writer }: CreateDocumentProps) =>
             action: 'document-generated'
           },
         });
+
+        if (documentId){
+          await updateCurrentDocumentVersion({
+            userId: session.user.id,
+            documentId: documentId,
+            content: generatedContent
+          })
+
+          writer.write({
+            type: 'data-editor',
+            id: generateId(),
+            data: {
+              action: 'update-content',
+              documentId: documentId,
+              content: generatedContent,
+              source: 'ai-tool',
+              markAsAI: true
+            }
+          })
+        }
 
         // Stream completion status
         writer.write({
