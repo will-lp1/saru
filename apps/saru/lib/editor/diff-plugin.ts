@@ -35,13 +35,16 @@ export function diffPlugin(documentId: string): Plugin {
 
         const diffedDoc = diffEditor(documentSchema, oldDocNode.toJSON(), newDocNode.toJSON());
 
-        const tr = editorView.state.tr
-          .replaceWith(0, editorView.state.doc.content.size, diffedDoc.content)
-          .setMeta('external', true)
-          .setMeta('addToHistory', false);
-
         try {
-          requestAnimationFrame(() => editorView.dispatch(tr));
+          requestAnimationFrame(() => {
+            // Create transaction using CURRENT state, not cached state
+            const currentTr = editorView.state.tr
+              .replaceWith(0, editorView.state.doc.content.size, diffedDoc.content)
+              .setMeta('external', true)
+              .setMeta('addToHistory', false);
+            
+            editorView.dispatch(currentTr);
+          });
         } catch (err) {
         }
 
