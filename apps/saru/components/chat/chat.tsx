@@ -13,7 +13,6 @@ import { FileText } from 'lucide-react';
 import { MentionedDocument } from './multimodal-input';
 import { useDocument } from '@/hooks/use-document';
 import { DEFAULT_CHAT_MODEL } from '@/lib/ai/models';
-// import { DataStreamHandler } from '@/components/data-stream-handler';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { useAiOptionsValue } from '@/hooks/ai-options';
@@ -83,6 +82,8 @@ export function Chat({
     console.error('Chat Error:', err);
   },
   });
+
+
 
   const [attachments, setAttachments] = useState<FileList | null>(null);
 
@@ -307,8 +308,6 @@ export function Chat({
           </form>
         </div>
       )}
-
-      {/* <DataStreamHandler id={chatId} /> */}
     </div>
   );
 }
