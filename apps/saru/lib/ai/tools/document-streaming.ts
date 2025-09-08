@@ -17,28 +17,46 @@ export const streamingDocument = ({ session, documentId, writer }: CreateDocumen
       title: z.string().describe('The title or topic to generate content about.'),
     }),
     execute: async ({ title }) => {
-      const statusId = generateId(); // For consistent status updates
-
       try {
-
+        let lastUpdateTime = 0;
+        const UPDATE_INTERVAL = 150;
         const generatedContent = await createTextDocument({ 
           title,
           onChunk: (accumulatedContent) => {
             if (documentId) {
-              writer.write({
-                type: 'data-editor',
-                id: generateId(),
-                data: {
-                  action: 'update-content',
-                  documentId: documentId,
-                  content: accumulatedContent,
-                  source: 'ai-tool',
-                  markAsAI: true
-                }
-              })
+              const now = Date.now();
+
+              if (now - lastUpdateTime >= UPDATE_INTERVAL) {
+                writer.write({
+                  type: 'data-editor',
+                  id: generateId(),
+                  data: {
+                    action: 'update-content',
+                    documentId: documentId,
+                    content: accumulatedContent,
+                    source: 'ai-tool',
+                    markAsAI: true
+                  }
+                });
+                lastUpdateTime = now;
+              }
             }
           }
         });
+
+        if (documentId) {
+          writer.write({
+            type: 'data-editor',
+            id: generateId(),
+            data: {
+              action: 'update-content',
+              documentId: documentId,
+              content: generatedContent,
+              source: 'ai-tool',
+              markAsAI: true
+            }
+          });
+        }
 
         if (documentId){
           await updateCurrentDocumentVersion({
