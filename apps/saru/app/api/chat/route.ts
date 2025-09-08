@@ -286,11 +286,7 @@ export async function POST(request: Request) {
             session, 
             writer // Pass writer for streaming
           });
-          availableTools.streamingDocument = streamingDocument({ 
-            session, 
-            writer 
-          });
-          activeToolsList.push('createDocument', 'streamingDocument');
+          activeToolsList.push('createDocument');
         } 
         else if (!activeDoc?.content || activeDoc.content.trim().length === 0) {
           availableTools.streamingDocument = streamingDocument({ 
