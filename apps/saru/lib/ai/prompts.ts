@@ -13,7 +13,7 @@ SEARCH:
 - Prioritize sources from 2025 or later.
 
 RESTRICTIONS:
-- **Never expose tool names or IDs to the user**.
+- **Never expose any tool names or any IDs to the user**.
 `;
 
 const writingQualityPrompt = `
