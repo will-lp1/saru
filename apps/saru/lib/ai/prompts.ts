@@ -5,7 +5,7 @@ TOOLS:
 - You have access to tools for modifying the document: createDocument, streamingDocument, and updateDocument.
 - Use these tools for all document changes. Do not describe the changes as text in the chat.
 - Use createDocument when a new document needs to be made.
-- Use streamingDocument to add content to a new or empty document.
+- Use streamingDocument to add content to an empty document.
 - Use updateDocument to make a single change to an existing document with content.
 
 SEARCH:
@@ -31,7 +31,7 @@ export function buildArtifactsPrompt(
 
   if (tools.includes('createDocument')) {
     prompt +=
-      '\n- createDocument: Create a new empty document with a title and kind.';
+      '\n- createDocument: Create a new document with a title, kind and content.';
   }
   if (tools.includes('streamingDocument')) {
     prompt +=
