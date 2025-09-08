@@ -20,13 +20,18 @@ export const createDocument = ({ session, writer }: CreateDocumentProps) =>
     execute: async ({ title }) => {
       const newDocumentId = generateUUID();
       const userId = session.user.id;
-      const statusId = generateId(); // For consistent status updates
 
       try {
+        let lastUpdateTime = 0;
+        const UPDATE_INTERVAL = 150; // Update every 150ms instead of every chunk
 
         const generatedContent = await createTextDocument({ 
           title,
           onChunk: (accumulatedContent) => {
+            const now = Date.now();
+            
+            // Only send updates every 150ms to prevent flooding
+            if (now - lastUpdateTime >= UPDATE_INTERVAL) {
               writer.write({
                 type: 'data-editor',
                 id: generateId(),
@@ -37,10 +42,23 @@ export const createDocument = ({ session, writer }: CreateDocumentProps) =>
                   source: 'ai-tool',
                   markAsAI: true
                 }
-              })
+              });
+              lastUpdateTime = now;
+            }
           }
         });
 
+        writer.write({
+          type: 'data-editor',
+          id: generateId(),
+          data: {
+            action: 'update-content',
+            documentId: newDocumentId,
+            content: generatedContent,
+            source: 'ai-tool',
+            markAsAI: true
+          }
+        });
 
         await saveDocument({
           id: newDocumentId,
