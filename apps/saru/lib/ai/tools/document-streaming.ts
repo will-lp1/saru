@@ -42,7 +42,24 @@ export const streamingDocument = ({ session, documentId, writer }: CreateDocumen
           },
         });
 
-        const generatedContent = await createTextDocument({ title });
+        const generatedContent = await createTextDocument({ 
+          title,
+          onChunk: (accumulatedContent) => {
+            if (documentId) {
+              writer.write({
+                type: 'data-editor',
+                id: generateId(),
+                data: {
+                  action: 'update-content',
+                  documentId: documentId,
+                  content: accumulatedContent,
+                  source: 'ai-tool',
+                  markAsAI: true
+                }
+              })
+            }
+          }
+        });
         console.log("this is generated content from line 45", generatedContent);
 
         // Stream the generated content immediately

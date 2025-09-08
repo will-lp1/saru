@@ -1,19 +1,39 @@
-import { generateText } from 'ai';
+import { generateText, streamText } from 'ai';
 import { myProvider } from '@/lib/ai/providers';
 
 export async function createTextDocument({
   title,
+  onChunk
 }: {
   title: string;
+  onChunk?: (accumulatedContent: string) => void
 }): Promise<string> {
-  const { text } = await generateText({
-    model: myProvider.languageModel('chat-model-large'),
-    prompt: title,
-    system:
-      'Write in valid Markdown. Only use headings (#, ##), bold and italics and only where appropriate.',
-  });
 
-  return text;
+  if (onChunk) {
+    const { textStream } = await streamText({
+      model: myProvider.languageModel('chat-model-large'),
+      prompt: title,
+      system: 'Write in valid Markdown. Only use headings (#, ##), bold and italics and only where appropriate.',
+    });
+
+    let accumulatedContent = '';
+    for await (const textPart of textStream) {
+      accumulatedContent += textPart;
+      onChunk(accumulatedContent);
+    }
+    return accumulatedContent
+  }
+  else {
+    // Non-streaming version (fallback)
+    const { text } = await generateText({
+      model: myProvider.languageModel('chat-model-large'),
+      prompt: title,
+      system:
+        'Write in valid Markdown. Only use headings (#, ##), bold and italics and only where appropriate.',
+    });
+
+    return text;
+  }
 }
 
 export async function updateTextDocument({
