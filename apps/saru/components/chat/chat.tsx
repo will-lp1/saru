@@ -110,23 +110,6 @@ export function Chat({
         }
       }
       
-      // Handle tool results with type assertion
-      if (part.type === 'tool-updateDocument' && part.state === 'output-available') {
-        const output = part.output as any; // Type assertion
-        console.log("Tool updateDocument completed:", output);
-        
-        if (output && output.newContent) {
-          window.dispatchEvent(new CustomEvent('editor:ai-content-update', {
-            detail: {
-              action: 'update-content',
-              documentId: output.id,
-              content: output.newContent,
-              markAsAI: true
-            }
-          }));
-        }
-      }
-      
       if (part.type === 'tool-streamingDocument' && part.state === 'output-available') {
         const output = part.output as any; // Type assertion
         console.log("Tool streamingDocument completed:", output);
