@@ -4,7 +4,7 @@ const TITLE = "Saru";
 const DESCRIPTION =
   "Saru is an open-source productivity tool for writing, note-taking, and organizing ideas with AI assistance. Fast, customizable, and user-friendly.";
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://www.cursorforwrit.ing/";
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://trysaru.com/";
 
 export const seoConfig: Metadata = {
   title: {
