@@ -6,7 +6,7 @@ TOOLS:
 - Use these tools for all document changes. Do not describe the changes as text in the chat.
 - Use createDocument when a new document needs to be made.
 - Use streamingDocument to add content to an empty document.
-- Use updateDocument to make a single change to an existing document with content.
+- Use updateDocument to make a change to a document with content.
 
 SEARCH:
 - Use webSearch if information is needed from outside the document.
@@ -35,7 +35,7 @@ export function buildArtifactsPrompt(
   }
   if (tools.includes('streamingDocument')) {
     prompt +=
-      '\n- streamingDocument: Stream generated content into the document (initial content when empty).';
+      '\n- streamingDocument: Stream generated content into the document (initial content only when doc is empty).';
   }
   if (tools.includes('updateDocument')) {
     prompt +=
