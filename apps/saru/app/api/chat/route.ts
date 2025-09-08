@@ -313,17 +313,6 @@ export async function POST(request: Request) {
           activeToolsList.push('webSearch');
         }
 
-        // Stream initial status
-        writer.write({
-          type: 'data-status',
-          id: generateId(),
-          data: { 
-            type: 'chat-started',
-            activeDocumentId: validatedActiveDocumentId,
-            availableTools: activeToolsList
-          },
-        });
-
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: dynamicSystemPrompt,

@@ -90,12 +90,6 @@ export function Chat({
       if ('data' in part && part.data) {
         const data = part.data as any; // Type assertion
         
-        if (part.type === 'data-status') {
-          console.log("status update: ", data);
-        }
-        if (part.type === 'data-document') {
-          console.log("document updated: ", data);
-        }
         if (part.type === 'data-editor') {
           console.log("🔥 Dispatching editor event with:", data);
           
