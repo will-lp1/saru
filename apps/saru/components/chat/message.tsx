@@ -208,7 +208,7 @@ const PurePreviewMessage = ({
                     actionType = "update";
                   } else if (part.type === "tool-createDocument") {
                     actionType = "create";
-                  } else if (part.type === "tool-streamDocument") {
+                  } else if (part.type === "tool-streamingDocument") {
                     actionType = "stream";
                   } else if (part.type === "tool-requestSuggestions") {
                     actionType = "request-suggestions";
@@ -218,7 +218,7 @@ const PurePreviewMessage = ({
                   if (result && typeof result === "object" && result !== null) {
                     return (
                       <DocumentToolResult
-                        key={`tool-result-${index}`}
+                        key={`tool-result-${'id' in part && part.id ? part.id : index}`}
                         type={actionType}
                         result={result as any}
                         isReadonly={isReadonly}
@@ -241,7 +241,7 @@ const PurePreviewMessage = ({
                     actionType = "update";
                   } else if (part.type === "tool-createDocument") {
                     actionType = "create";
-                  } else if (part.type === "tool-streamDocument") {
+                  } else if (part.type === "tool-streamingDocument") {
                     actionType = "stream";
                   } else if (part.type === "tool-requestSuggestions") {
                     actionType = "request-suggestions";
@@ -251,7 +251,7 @@ const PurePreviewMessage = ({
 
                   return (
                     <DocumentToolCall
-                      key={`tool-call-${index}`}
+                      key={`tool-call-${'id' in part && part.id ? part.id : index}`}
                       type={actionType}
                       args={input as any}
                       isReadonly={isReadonly}

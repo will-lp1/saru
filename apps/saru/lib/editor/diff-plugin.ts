@@ -28,24 +28,23 @@ export function diffPlugin(documentId: string): Plugin {
         }
 
         const oldContent = previewOriginalContentRef ?? buildContentFromDocument(editorView.state.doc);
-        if (newContent === oldContent) return;
-
-        const oldDocNode = buildDocumentFromContent(oldContent);
-        const newDocNode = buildDocumentFromContent(newContent);
-
-        const diffedDoc = diffEditor(documentSchema, oldDocNode.toJSON(), newDocNode.toJSON());
-
         try {
+          const oldDocNode = buildDocumentFromContent(oldContent);
+          const newDocNode = buildDocumentFromContent(newContent);
+
+          const diffedDoc = diffEditor(documentSchema, oldDocNode.toJSON(), newDocNode.toJSON());
+
           requestAnimationFrame(() => {
             // Create transaction using CURRENT state, not cached state
             const currentTr = editorView.state.tr
               .replaceWith(0, editorView.state.doc.content.size, diffedDoc.content)
               .setMeta('external', true)
               .setMeta('addToHistory', false);
-            
             editorView.dispatch(currentTr);
           });
         } catch (err) {
+          console.error('[diff-plugin] Failed to generate preview diff:', err);
+          return;
         }
 
         previewActiveRef = true;
@@ -99,10 +98,17 @@ export function diffPlugin(documentId: string): Plugin {
 
           for (let i = rangesToDelete.length - 1; i >= 0; i--) {
             const { from, to } = rangesToDelete[i];
-            tr.delete(from, to);
+            try {
+              tr.delete(from, to);
+            } catch (err) {
+              console.error('[diff-plugin] Failed to delete diff range', { from, to, err });
+            }
           }
-          
-          tr.removeMark(0, tr.doc.content.size, diffMarkType);
+          try {
+            tr.removeMark(0, tr.doc.content.size, diffMarkType);
+          } catch (err) {
+            console.error('[diff-plugin] Failed to remove diff marks', err);
+          }
           tr.setMeta('addToHistory', false);
           editorView.dispatch(tr);
           editorView.dom.classList.remove('applying-changes');

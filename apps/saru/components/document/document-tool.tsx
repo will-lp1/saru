@@ -206,12 +206,16 @@ function PureDocumentToolResult({
     );
   }
 
-  const successMessage = 
-    type === 'create' 
-      ? (result.content || 'Document initialized successfully.') 
-      : type === 'stream' 
-        ? (result.content || 'Content generation completed.') 
-        : 'Operation successful.';
+  const successMessage = (() => {
+    switch (type) {
+      case 'create':
+        return 'Document created & ready to edit.';
+      case 'stream':
+        return 'Content generation completed.'; 
+      default:
+        return 'Operation successful.';
+    }
+  })();
 
   const SuccessIcon = CheckCircleFillIcon;
 
@@ -271,6 +275,7 @@ function PureDocumentToolCall({
         <div className="text-left flex-grow text-foreground">
           {`${getActionText(type, 'present')}`}{' '}
           {displayTitle ? `"${displayTitle}"` : '(active document)'}
+          {type === 'stream' && <span className="text-xs text-muted-foreground ml-1">(streaming)</span>}
         </div>
         <div className="animate-spin text-muted-foreground flex-shrink-0">
             <LoaderIcon size={16} />
