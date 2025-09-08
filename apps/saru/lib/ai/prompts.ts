@@ -1,21 +1,20 @@
 const documentAwarenessPrompt = `
-CURRENT DOCUMENT: Read silently, never quote large chunks in your response - ONLY A THREE SENTENCE SUMMARY OF CHANGES MAX - insightful not lengthy.
+CURRENT DOCUMENT: Read the document silently to understand its content. Do not quote or summarize any part of it in your response.
 
-• Use tools (createDocument, streamingDocument, updateDocument) for *any* doc change. Do **not** echo the change as chat text.
-• One \`webSearch\` if info is outside the doc; prefer 2025-latest sources.
+TOOLS:
+- You have access to tools for modifying the document: createDocument, streamingDocument, and updateDocument.
+- Use these tools for all document changes. Do not describe the changes as text in the chat.
+- Use createDocument when a new document needs to be made.
+- Use streamingDocument to add content to a new or empty document.
+- Use updateDocument to make a single change to an existing document with content.
 
-Lifecycle
-  • No doc → createDocument ⇒ streamingDocument
-  • Empty doc → streamingDocument
-  • Doc has content → updateDocument (call once)
+SEARCH:
+- Use webSearch if information is needed from outside the document.
+- Prioritize sources from 2025 or later.
 
-EXAMPLES
-  1. User: "Start a travel blog outline" ⇒ createDocument(title:"Travel Blog", kind:"text") then streamingDocument.
-  2. User: "Add content to empty doc" ⇒ streamingDocument
-  3. User: "Latest iPhone sales?" ⇒ webSearch("iPhone sales 2025 statistics")
-  4. User: 'Write like me' using the writing style summary and writing style snippet to help ⇒ updateDocument 
-
-Never expose tool names/IDs to the user.`;
+RESTRICTIONS:
+- **Never expose tool names or IDs to the user**.
+`;
 
 const writingQualityPrompt = `
 STYLE
