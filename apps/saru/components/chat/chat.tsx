@@ -109,6 +109,24 @@ export function Chat({
           }));
         }
       }
+
+      if (part.type === 'tool-createDocument' && part.state === 'output-available') {
+        const output = part.output as any; // Type assertion
+        console.log("Tool createDocument completed:", output);
+        
+        if (output && output.documentId && output.content) {
+          window.dispatchEvent(new CustomEvent('document-created', {
+            detail: {
+              document: {
+                id: output.documentId,
+                title: output.title,
+                content: output.content,
+                kind: 'text'
+              }
+            }
+          }));
+        }
+      }
       
       if (part.type === 'tool-streamingDocument' && part.state === 'output-available') {
         const output = part.output as any; // Type assertion
