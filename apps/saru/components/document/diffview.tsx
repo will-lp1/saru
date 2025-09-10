@@ -9,7 +9,7 @@ import { schema } from 'prosemirror-schema-basic';
 import { addListNodes } from 'prosemirror-schema-list';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { renderToString } from 'react-dom/server';
 import { Markdown } from '@/components/markdown';
 
@@ -42,10 +42,6 @@ const diffSchema = new Schema({
   }),
 });
 
-function computeDiff(oldDoc: ProsemirrorNode, newDoc: ProsemirrorNode) {
-  return diffEditor(diffSchema, oldDoc.toJSON(), newDoc.toJSON());
-}
-
 type DiffEditorProps = {
   oldContent: string;
   newContent: string;
@@ -55,8 +51,11 @@ export const DiffView = ({ oldContent, newContent }: DiffEditorProps) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
 
-  useEffect(() => {
-    if (editorRef.current && !viewRef.current) {
+  // Memoize expensive computations
+  const diffedDoc = useMemo(() => {
+    if (!oldContent && !newContent) return null;
+    
+    try {
       const parser = DOMParser.fromSchema(diffSchema);
 
       const oldHtmlContent = renderToString(
@@ -75,8 +74,27 @@ export const DiffView = ({ oldContent, newContent }: DiffEditorProps) => {
       const oldDoc = parser.parse(oldContainer);
       const newDoc = parser.parse(newContainer);
 
-      const diffedDoc = computeDiff(oldDoc, newDoc);
+      return diffEditor(diffSchema, oldDoc.toJSON(), newDoc.toJSON());
+    } catch (error) {
+      console.error('Failed to compute diff:', error);
+      return null;
+    }
+  }, [oldContent, newContent]);
 
+  useEffect(() => {
+    if (!editorRef.current || !diffedDoc) return;
+
+    // Create editor only once or when diffedDoc changes
+    if (viewRef.current) {
+      // Update existing editor instead of recreating
+      const tr = viewRef.current.state.tr.replaceWith(
+        0, 
+        viewRef.current.state.doc.content.size, 
+        diffedDoc.content
+      );
+      viewRef.current.dispatch(tr);
+    } else {
+      // Create new editor only if none exists
       const state = EditorState.create({
         doc: diffedDoc,
         plugins: [],
@@ -88,13 +106,22 @@ export const DiffView = ({ oldContent, newContent }: DiffEditorProps) => {
       });
     }
 
+    // Cleanup only on unmount
     return () => {
       if (viewRef.current) {
         viewRef.current.destroy();
         viewRef.current = null;
       }
     };
-  }, [oldContent, newContent]);
+  }, [diffedDoc]); // Only depend on the memoized diffedDoc
+
+  if (!diffedDoc) {
+    return (
+      <div className="p-3 text-xs text-muted-foreground">
+        No changes to display
+      </div>
+    );
+  }
 
   return <div className="diff-editor" ref={editorRef} />;
 };
