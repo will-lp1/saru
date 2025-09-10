@@ -5,6 +5,79 @@ import { myProvider } from '@/lib/ai/providers';
 import { updateDocumentPrompt } from '@/lib/ai/prompts';
 import { getSessionCookie } from 'better-auth/cookies';
 
+function createTokenBatcher(
+  writer: WritableStreamDefaultWriter,
+  encoder: TextEncoder,
+  writerClosed: () => boolean
+) {
+  let buffer = '';
+  let lastFlush = 0;
+  let flushTimeout: NodeJS.Timeout | null = null;
+  const minFlushInterval = 16;
+  const maxBatchSize = 50;
+  const maxWaitTime = 100;
+
+  const flush = async (type: string) => {
+    if (writerClosed() || !buffer) return;
+
+    try {
+      const data = encoder.encode(`data: ${JSON.stringify({
+        type,
+        content: buffer
+      })}\n\n`);
+      await writer.write(data);
+      buffer = '';
+      lastFlush = Date.now();
+
+      if (flushTimeout) {
+        clearTimeout(flushTimeout);
+        flushTimeout = null;
+      }
+    } catch (error) {
+      console.error('Error flushing batch:', error);
+    }
+  };
+
+  const addToken = async (type: string, content: string) => {
+    if (writerClosed()) return;
+    buffer += content;
+    const now = Date.now();
+    const timeSinceLastFlush = now - lastFlush;
+
+    const shouldFlushNow = 
+      buffer.length >= maxBatchSize ||
+      timeSinceLastFlush >= maxWaitTime ||
+      content.includes(' ') ||
+      /[.!?]/.test(content);
+
+    if (shouldFlushNow && timeSinceLastFlush >= minFlushInterval) {
+      await flush(type);
+    } else if (!flushTimeout) {
+      flushTimeout = setTimeout(() => {
+        flush(type);
+      }, Math.min(maxWaitTime, minFlushInterval));
+    }
+  };
+
+  const finalFlush = async (type: string) => {
+    if (flushTimeout) {
+      clearTimeout(flushTimeout);
+      flushTimeout = null;
+    }
+    await flush(type);
+  };
+
+  return { addToken, finalFlush };
+}
+
+const createEncodedMessages = (encoder: TextEncoder) => ({
+  FINISH: encoder.encode(`data: ${JSON.stringify({ type: 'finish', content: '' })}\n\n`),
+  createError: (message: string) => encoder.encode(`data: ${JSON.stringify({
+    type: 'error',
+    content: message
+  })}\n\n`)
+});
+
 async function handleSuggestionRequest(
   documentId: string,
   description: string,
@@ -18,12 +91,19 @@ async function handleSuggestionRequest(
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
   const encoder = new TextEncoder();
+  const encodedMessages = createEncodedMessages(encoder);
+  let writerClosed = false;
+
+  const getWriterClosed = () => writerClosed;
+  const batcher = createTokenBatcher(writer, encoder, getWriterClosed);
 
   (async () => {
     try {
       const document = await getDocumentById({ id: documentId });
       if (!document) throw new Error('Document not found');
       console.log("Starting to process suggestion stream");
+      
+      // Pre-encoded initial messages
       await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'id', content: documentId })}\n\n`));
 
       const isPartialEdit = !!selectedText;
@@ -45,17 +125,34 @@ async function handleSuggestionRequest(
         writingStyleSummary,
         applyStyle,
         write: async (type, content) => {
-          await writer.write(encoder.encode(`data: ${JSON.stringify({ type, content })}\n\n`));
+          await batcher.addToken(type, content);
         }
       });
 
-      console.log("Finished processing suggestion, sending finish event");
-      await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'finish', content: '' })}\n\n`));
+      // Ensure all tokens are flushed
+      await batcher.finalFlush('suggestion-delta');
+
+      if (!writerClosed) {
+        await writer.write(encodedMessages.FINISH);
+      }
     } catch (e: any) {
       console.error('Error in stream processing:', e);
-      await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', content: e.message || 'An error occurred' })}\n\n`));
+      if (!writerClosed) {
+        try {
+          await writer.write(encodedMessages.createError(e.message || 'An error occurred'));
+        } catch (error) {
+          console.error('Error writing error event:', error);
+        }
+      }
     } finally {
-      await writer.close();
+      if (!writerClosed) {
+        try {
+          writerClosed = true;
+          await writer.close();
+        } catch (error) {
+          console.error('Error closing writer:', error);
+        }
+      }
       console.log("Stream closed");
     }
   })();
@@ -144,7 +241,6 @@ async function streamSuggestion({
   applyStyle: boolean;
   write: (type: string, content: string) => Promise<void>;
 }) {
-  let draftContent = '';
   const contentToModify = selectedText || document.content;
   let promptContext = selectedText 
     ? `You are an expert text editor. Your task is to refine a given piece of text based on a specific instruction.
@@ -194,20 +290,16 @@ Only output the resulting text, with no preamble or explanation.`;
 
   let chunkCount = 0;
   for await (const delta of fullStream) {
-    const { type } = delta;
-
-    if (type === 'text-delta') {
-      const { text: textDelta } = delta;
-      draftContent += textDelta;
+    if (delta.type === 'text-delta') {
       chunkCount++;
 
-      if (chunkCount % 10 === 0) {
-        console.log(`Stream progress: ${draftContent.length} characters processed (${chunkCount} chunks)`);
+      if (chunkCount % 100 === 0) {
+        console.log(`Stream progress: ${chunkCount} chunks processed`);
       }
 
-      await write('suggestion-delta', textDelta);
+      await write('suggestion-delta', delta.text);
     }
   }
 
-  console.log(`Stream complete: Generated ${draftContent.length} characters in ${chunkCount} chunks`);
-} 
+  console.log(`Stream complete: ${chunkCount} chunks processed`);
+}

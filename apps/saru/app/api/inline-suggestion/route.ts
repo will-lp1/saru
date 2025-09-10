@@ -3,6 +3,78 @@ import { streamText } from 'ai';
 import { myProvider } from '@/lib/ai/providers';
 import { getSessionCookie } from 'better-auth/cookies';
 
+function createTokenBatcher(
+  writer: WritableStreamDefaultWriter,
+  encoder: TextEncoder,
+  writerClosed: () => boolean
+) {
+  let buffer = '';
+  let lastFlush = 0;
+  let flushTimeout: NodeJS.Timeout | null = null;
+  const minFlushInterval = 16;
+  const maxBatchSize = 50;
+  const maxWaitTime = 100;
+
+  const flush = async (type: string) => {
+    if (writerClosed() || !buffer) return;
+
+    try {
+      const data = encoder.encode(`data: ${JSON.stringify({
+        type,
+        content: buffer
+      })}\n\n`)
+      await writer.write(data);
+      buffer = '';
+      lastFlush = Date.now();
+
+      if (flushTimeout){
+        clearTimeout(flushTimeout);
+        flushTimeout = null;
+      }
+    } catch (error) {
+      console.error('Error flushing batch: ', error);
+    }
+  };
+
+  const addToken = async (type: string, content: string) => {
+    if (writerClosed()) return;
+    buffer += content;
+    const now = Date.now();
+    const timeSinceLastFlush = now - lastFlush;
+
+    const shouldFlushNow = 
+      buffer.length >= maxBatchSize ||
+      timeSinceLastFlush >= maxWaitTime ||
+      content.includes(' ') ||
+      /[.!?]/.test(content);
+
+      if (shouldFlushNow && timeSinceLastFlush >= minFlushInterval){
+        await flush(type);
+      } else if (!flushTimeout){
+        flushTimeout = setTimeout(() => {
+          flush(type);
+        }, Math.min(maxWaitTime, minFlushInterval));
+      }
+  };
+
+  const finalFlush = async (type: string) => {
+    if(flushTimeout) {
+      clearTimeout(flushTimeout);
+      flushTimeout = null;
+    }
+    await flush(type);
+  };
+  return { addToken, finalFlush };
+}
+
+const createEncodeMessage = (encoder: TextEncoder) => ({
+  FINISH: encoder.encode(`data: ${JSON.stringify({ type: 'finish', content: '' })}\n\n`),
+  createError: (message: string) => encoder.encode(`data ${JSON.stringify({
+    type: 'error',
+    content: message
+  })}\n\n`)
+})
+
 async function handleInlineSuggestionRequest(
   contextBefore: string,
   contextAfter: string,
@@ -21,43 +93,37 @@ async function handleInlineSuggestionRequest(
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
   const encoder = new TextEncoder();
+  const encodedMessages = createEncodeMessage(encoder);
   let writerClosed = false;
+  const getWriterClosed = () => writerClosed;
+  const batcher = createTokenBatcher(writer, encoder, getWriterClosed);
 
   (async () => {
     try {
       console.log("Starting to process inline suggestion stream");
 
-      await streamInlineSuggestion({ contextBefore, contextAfter, fullContent, suggestionLength, customInstructions, writingStyleSummary, applyStyle, structureInfo, write: async (type, content) => {
-        if (writerClosed) return;
-
-        try {
-          await writer.write(encoder.encode(`data: ${JSON.stringify({
-            type,
-            content
-          })}\n\n`));
-        } catch (error) {
-          console.error('Error writing to stream:', error);
+      await streamInlineSuggestion({ 
+        contextBefore, 
+        contextAfter, 
+        fullContent, 
+        suggestionLength, 
+        customInstructions, 
+        writingStyleSummary, 
+        applyStyle, 
+        structureInfo, 
+        write: async (type, content) => {
+          await batcher.addToken(type, content);
         }
-      } });
-
-      if (!writerClosed) {
-        try {
-          await writer.write(encoder.encode(`data: ${JSON.stringify({
-            type: 'finish',
-            content: ''
-          })}\n\n`));
-        } catch (error) {
-          console.error('Error writing finish event:', error);
-        }
+      });
+      await batcher.finalFlush('suggestion-delta')
+      if(!writerClosed){
+        await writer.write(encodedMessages.FINISH)
       }
     } catch (e: any) {
       console.error('Error in stream processing:', e);
       if (!writerClosed) {
         try {
-          await writer.write(encoder.encode(`data: ${JSON.stringify({
-            type: 'error',
-            content: e.message || 'An error occurred'
-          })}\n\n`));
+          await writer.write(encodedMessages.createError(e.message || 'An error occured'))
         } catch (error) {
           console.error('Error writing error event:', error);
         }
