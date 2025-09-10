@@ -33,6 +33,7 @@ From the project root:
      ```dotenv
      BETTER_AUTH_SECRET=""        # e.g., openssl rand -hex 32
      BETTER_AUTH_URL="http://localhost:3000"
+     NEXT_PUBLIC_BETTER_AUTH_URL="http://localhost:3000"
      DISCORD_WEBHOOK_URL=""
      # AI Keys: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY
      ```
