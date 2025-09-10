@@ -24,7 +24,6 @@ export const updateDocument = ({
     }),
     execute: async ({ description }) => {
       const documentId = defaultDocumentId;
-      const statusId = generateId(); // For consistent status updates
 
       try {
 
@@ -68,6 +67,10 @@ export const updateDocument = ({
 
         const { text: newContent } = await generateText({
           model: myProvider.languageModel('artifact-model'),
+          system: `
+            Provide the revised document content in valid Markdown only, using headings (#, ##), bold and italics and only where appropriate.
+            Do not include any commentary. Never use Tables. 
+          `.trim(),
           prompt,
           temperature: 0.2,
         });
