@@ -52,26 +52,22 @@ export const updateDocument = ({
         }
 
         const originalContent = document.content || '';
-        const prompt = `You are an expert editor. Here is the ORIGINAL document:
-          ${originalContent}
-
-          INSTRUCTIONS:
-          - Make only the minimal changes required to satisfy the description.
-          - Keep paragraphs, sentences, and words that do **not** need to change exactly as they are.
-          - Do **not** paraphrase or re-flow content unless strictly necessary.
-          - Preserve existing formatting and line breaks.
-          - Return ONLY the updated document content with no additional commentary or separators.
-
-          EDIT DESCRIPTION: "${description}"
-          UPDATED DOCUMENT:`;
 
         const { text: newContent } = await generateText({
           model: myProvider.languageModel('artifact-model'),
-          system: `
-            Provide the revised document content in valid Markdown only, using headings (#, ##), bold and italics and only where appropriate.
-            Do not include any commentary. Never use Tables. 
-          `.trim(),
-          prompt,
+          system: `You are an expert document editor. You provide only the revised document content in valid Markdown format. Never include commentary, explanations, or separators. Use headings (#, ##), bold, and italics appropriately. Never use tables.`,
+          
+          prompt: `Original document:
+        ${originalContent}
+
+        Edit requirements:
+        - Make only minimal changes needed for: "${description}"
+        - Preserve unchanged content exactly as-is
+        - Do not paraphrase unless required
+        - Maintain existing formatting and line breaks
+
+        Return the updated document:`,
+          
           temperature: 0.2,
         });
 
