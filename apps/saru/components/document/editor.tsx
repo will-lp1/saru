@@ -18,7 +18,7 @@ import { createEditorPlugins } from "@/lib/editor/editor-plugins";
 import { createInlineSuggestionCallback } from "@/lib/editor/inline-suggestion-plugin";
 import { type FormatState } from "@/lib/editor/format-plugin";
 import SynonymOverlay from "@/components/synonym-overlay";
-
+import removeEmptyListItems from "./document-cleaner";
 
 type EditorProps = {
   content: string;
@@ -158,7 +158,15 @@ useEffect(() => {
 
           const oldEditorState = editorView.state;
           const oldSaveState = savePluginKey.getState(oldEditorState);
-          const newState = editorView.state.apply(transaction);
+          let newState = editorView.state.apply(transaction);
+
+          if(transaction.docChanged){
+            const cleanupTr = removeEmptyListItems(newState);
+            if (cleanupTr.docChanged){
+              newState = newState.apply(cleanupTr);
+            }
+          }
+
           editorView.updateState(newState);
 
           const newSaveState = savePluginKey.getState(newState);
