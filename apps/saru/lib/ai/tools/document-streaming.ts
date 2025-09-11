@@ -1,33 +1,80 @@
-import { DataStreamWriter, tool } from 'ai';
-import { z } from 'zod';
+import { tool, UIMessageStreamWriter, generateId } from 'ai';
+import { z } from 'zod/v3';
 import { Session } from '@/lib/auth';
 import { createTextDocument } from '@/lib/ai/document-helpers';
+import { updateCurrentDocumentVersion } from '@/lib/db/queries';
 
 interface CreateDocumentProps {
   session: Session;
-  dataStream: DataStreamWriter;
+  documentId?: string;
+  writer: UIMessageStreamWriter; // Add writer for streaming
 }
 
-export const streamingDocument = ({ dataStream }: CreateDocumentProps) =>
+export const streamingDocument = ({ session, documentId, writer }: CreateDocumentProps) =>
   tool({
-    description:
-      'Generates content based on a title or prompt and streams it into the active document view. Use this to start writing or add content.',
-    parameters: z.object({
+    description: 'Generates content based on a title or prompt for the active document.',
+    inputSchema: z.object({
       title: z.string().describe('The title or topic to generate content about.'),
     }),
     execute: async ({ title }) => {
+      try {
+        let lastUpdateTime = 0;
+        const UPDATE_INTERVAL = 150;
+        const generatedContent = await createTextDocument({ 
+          title,
+          onChunk: (accumulatedContent) => {
+            if (documentId) {
+              const now = Date.now();
 
-      await createTextDocument({
-        title,
-        dataStream,
-      });
+              if (now - lastUpdateTime >= UPDATE_INTERVAL) {
+                writer.write({
+                  type: 'data-editor',
+                  id: generateId(),
+                  data: {
+                    action: 'update-content',
+                    documentId: documentId,
+                    content: accumulatedContent,
+                    source: 'ai-tool',
+                    markAsAI: true
+                  }
+                });
+                lastUpdateTime = now;
+              }
+            }
+          }
+        });
 
-      dataStream.writeData({ type: 'force-save', content: '' });
-      
-      dataStream.writeData({ type: 'finish', content: '' });
+        if (documentId) {
+          writer.write({
+            type: 'data-editor',
+            id: generateId(),
+            data: {
+              action: 'update-content',
+              documentId: documentId,
+              content: generatedContent,
+              source: 'ai-tool',
+              markAsAI: true
+            }
+          });
+        }
 
-      return {
-        content: 'Content generation streamed.',
-      };
+        if (documentId){
+          await updateCurrentDocumentVersion({
+            userId: session.user.id,
+            documentId: documentId,
+            content: generatedContent
+          })
+        }
+
+        return {
+          title,
+          content: generatedContent,
+          action: 'document-generated',
+          message: 'Content generation completed.',
+        };
+      } catch (error: any) {
+        console.error('[AI Tool] streamingDocument failed:', error);
+        throw new Error(`Failed to generate document content: ${error.message || error}`);
+      }
     },
   });

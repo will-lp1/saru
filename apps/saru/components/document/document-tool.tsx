@@ -1,11 +1,10 @@
-import { memo, useState, useCallback, useEffect } from 'react';
+import { memo, useState, useCallback, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 
 import { FileIcon, LoaderIcon, MessageIcon, PencilEditIcon, CheckIcon, CheckCircleFillIcon, CrossIcon } from '@/components/icons';
 import { toast } from 'sonner';
 import { useDocument } from '@/hooks/use-document';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 
 // Lazy-load diff viewer to keep initial bundle small.
 const DiffView = dynamic(() => import('./diffview').then(m => m.DiffView), {
@@ -67,9 +66,11 @@ function PureDocumentToolResult({
     result.originalContent !== undefined && 
     result.newContent !== undefined &&
     result.originalContent !== result.newContent;
+  
+  const hasDispatchedRef = useRef(false);
 
   useEffect(() => {
-    if (isUpdateProposal && result.id && result.newContent) {
+    if (isUpdateProposal && result.id && result.newContent && !hasDispatchedRef.current) {
       const event = new CustomEvent('preview-document-update', {
         detail: {
           documentId: result.id,
@@ -78,6 +79,7 @@ function PureDocumentToolResult({
         },
       });
       window.dispatchEvent(event);
+      hasDispatchedRef.current = true
     }
   }, [isUpdateProposal, result.id, result.newContent, result.originalContent]);
 
@@ -206,12 +208,16 @@ function PureDocumentToolResult({
     );
   }
 
-  const successMessage = 
-    type === 'create' 
-      ? (result.content || 'Document initialized successfully.') 
-      : type === 'stream' 
-        ? (result.content || 'Content generation completed.') 
-        : 'Operation successful.';
+  const successMessage = (() => {
+    switch (type) {
+      case 'create':
+        return 'Document created & ready to edit.';
+      case 'stream':
+        return 'Content generation completed.'; 
+      default:
+        return 'Operation successful.';
+    }
+  })();
 
   const SuccessIcon = CheckCircleFillIcon;
 
@@ -271,6 +277,7 @@ function PureDocumentToolCall({
         <div className="text-left flex-grow text-foreground">
           {`${getActionText(type, 'present')}`}{' '}
           {displayTitle ? `"${displayTitle}"` : '(active document)'}
+          {type === 'stream' && <span className="text-xs text-muted-foreground ml-1">(streaming)</span>}
         </div>
         <div className="animate-spin text-muted-foreground flex-shrink-0">
             <LoaderIcon size={16} />

@@ -1,18 +1,23 @@
-import { tool, generateText } from 'ai';
+import { tool, generateText, UIMessageStreamWriter, generateId } from 'ai';
 import { Session } from '@/lib/auth';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { getDocumentById } from '@/lib/db/queries';
 import { myProvider } from '@/lib/ai/providers';
 
 interface UpdateDocumentProps {
   session: Session;
-  documentId?: string;
+  documentId: string;
+  writer: UIMessageStreamWriter; // Add writer for streaming
 }
 
-export const updateDocument = ({ session: _session, documentId: defaultDocumentId }: UpdateDocumentProps) =>
+export const updateDocument = ({ 
+  session: _session, 
+  documentId: defaultDocumentId, 
+  writer 
+}: UpdateDocumentProps) =>
   tool({
     description: 'Update a document based on a description. Returns the original and proposed new content for review.',
-    parameters: z.object({
+    inputSchema: z.object({
       description: z
         .string()
         .describe('The description of changes that need to be made'),
@@ -21,6 +26,7 @@ export const updateDocument = ({ session: _session, documentId: defaultDocumentI
       const documentId = defaultDocumentId;
 
       try {
+
         if (!description.trim()) {
           return { error: 'No update description provided.' };
         }
@@ -41,15 +47,27 @@ export const updateDocument = ({ session: _session, documentId: defaultDocumentI
         const document = await getDocumentById({ id: documentId });
         if (!document) {
           console.error(`[AI Tool] Document not found with ID: ${documentId}`);
+
           return { error: 'Document not found' };
         }
-        const originalContent = document.content || '';
 
-        const prompt = `You are an expert editor. Here is the ORIGINAL document:\n\n${originalContent}\n\n---\n\nTASK: Apply the following edits.\n- Make only the minimal changes required to satisfy the description.\n- Keep paragraphs, sentences, and words that do **not** need to change exactly as they are.\n- Do **not** paraphrase or re-flow content unless strictly necessary.\n- Preserve existing formatting and line breaks.\n\nReturn ONLY the updated document with no additional commentary.\n\nDESCRIPTION: "${description}"`;
+        const originalContent = document.content || '';
 
         const { text: newContent } = await generateText({
           model: myProvider.languageModel('artifact-model'),
-          prompt,
+          system: `You are an expert document editor. You provide only the revised document content in valid Markdown format. Never include commentary, explanations, or separators. Use headings (#, ##), bold, and italics appropriately. Never use tables.`,
+          
+          prompt: `Original document:
+        ${originalContent}
+
+        Edit requirements:
+        - Make only minimal changes needed for: "${description}"
+        - Preserve unchanged content exactly as-is
+        - Do not paraphrase unless required
+        - Maintain existing formatting and line breaks
+
+        Return the updated document:`,
+          
           temperature: 0.2,
         });
 
@@ -62,7 +80,6 @@ export const updateDocument = ({ session: _session, documentId: defaultDocumentI
         };
 
       } catch (error: any) {
-        console.error('[AI Tool] updateDocument failed:', error);
         const errorMessage = error instanceof Error ? error.message : String(error);
         return {
           error: 'Failed to generate document update: ' + errorMessage,

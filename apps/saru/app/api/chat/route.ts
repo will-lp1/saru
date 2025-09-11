@@ -1,10 +1,14 @@
 import {
-  type Message,
-  createDataStreamResponse,
+  type UIMessage,
   streamText,
   smoothStream,
-} from 'ai';
-import { systemPrompt } from '@/lib/ai/prompts';
+  stepCountIs,
+  convertToModelMessages,
+  createUIMessageStream,
+  generateId,
+  createUIMessageStreamResponse,
+} from "ai";
+import { systemPrompt } from "@/lib/ai/prompts";
 import {
   deleteChatById,
   getChatById,
@@ -13,27 +17,70 @@ import {
   getDocumentById,
   getMessagesByChatId,
   updateChatContextQuery,
-} from '@/lib/db/queries';
+} from "@/lib/db/queries";
 import {
   generateUUID,
   getMostRecentUserMessage,
-  sanitizeResponseMessages,
   parseMessageContent,
   convertToUIMessages,
-} from '@/lib/utils';
-import { generateTitleFromUserMessage } from '@/app/api/chat/actions/chat';
-import { updateDocument } from '@/lib/ai/tools/update-document';
-import { streamingDocument } from '@/lib/ai/tools/document-streaming';
-import { isProductionEnvironment } from '@/lib/constants';
-import { NextResponse } from 'next/server';
-import { myProvider } from '@/lib/ai/providers';
+  convertUIMessageToDBFormat,
+} from "@/lib/utils";
+import { generateTitleFromUserMessage } from "@/app/api/chat/actions/chat";
+import { updateDocument } from "@/lib/ai/tools/update-document";
+import { streamingDocument } from "@/lib/ai/tools/document-streaming";
+import { isProductionEnvironment } from "@/lib/constants";
+import { NextResponse } from "next/server";
+import { myProvider } from "@/lib/ai/providers";
 import { auth } from "@/lib/auth";
-import { headers } from 'next/headers';
-import type { Document } from '@saru/db';
-import { createDocument as aiCreateDocument } from '@/lib/ai/tools/create-document';
-import { webSearch } from '@/lib/ai/tools/web-search';
+import { headers } from "next/headers";
+import type { Document } from "@saru/db";
+import { createDocument } from "@/lib/ai/tools/create-document";
+import { webSearch } from "@/lib/ai/tools/web-search";
 
 export const maxDuration = 60;
+
+async function setupToolsAsync({
+  validatedActiveDocumentId,
+  activeDoc,
+  session,
+  writer,
+}: {
+  validatedActiveDocumentId?: string;
+  activeDoc?: any;
+  session: any;
+  writer: any;
+}) {
+  const availableTools: any = {};
+  const activeToolsList: Array<
+    "createDocument" | "streamingDocument" | "updateDocument" | "webSearch"
+  > = [];
+
+  if (!validatedActiveDocumentId) {
+    availableTools.createDocument = createDocument({ session, writer });
+    activeToolsList.push("createDocument");
+  } else if (!activeDoc?.content || activeDoc.content.trim().length === 0) {
+    availableTools.streamingDocument = streamingDocument({
+      session,
+      documentId: validatedActiveDocumentId,
+      writer,
+    });
+    activeToolsList.push("streamingDocument");
+  } else {
+    availableTools.updateDocument = updateDocument({
+      session,
+      documentId: validatedActiveDocumentId,
+      writer,
+    });
+    activeToolsList.push("updateDocument");
+  }
+
+  if (process.env.TAVILY_API_KEY) {
+    availableTools.webSearch = webSearch({ session, writer });
+    activeToolsList.push("webSearch");
+  }
+
+  return { availableTools, activeToolsList };
+}
 
 async function createEnhancedSystemPrompt({
   selectedChatModel,
@@ -42,7 +89,14 @@ async function createEnhancedSystemPrompt({
   customInstructions,
   writingStyleSummary,
   applyStyle,
-  availableTools = ['createDocument','streamingDocument','updateDocument','webSearch'] as Array<'createDocument'|'streamingDocument'|'updateDocument'|'webSearch'>,
+  availableTools = [
+    "createDocument",
+    "streamingDocument",
+    "updateDocument",
+    "webSearch",
+  ] as Array<
+    "createDocument" | "streamingDocument" | "updateDocument" | "webSearch"
+  >,
 }: {
   selectedChatModel: string;
   activeDocumentId?: string | null;
@@ -50,9 +104,10 @@ async function createEnhancedSystemPrompt({
   customInstructions?: string | null;
   writingStyleSummary?: string | null;
   applyStyle?: boolean;
-  availableTools?: Array<'createDocument'|'streamingDocument'|'updateDocument'|'webSearch'>;
+  availableTools?: Array<
+    "createDocument" | "streamingDocument" | "updateDocument" | "webSearch"
+  >;
 }) {
-
   let basePrompt = systemPrompt({ selectedChatModel, availableTools });
   let contextAdded = false;
 
@@ -70,16 +125,15 @@ async function createEnhancedSystemPrompt({
       const document = await getDocumentById({ id: activeDocumentId });
       if (document) {
         const documentContext = `
-CURRENT DOCUMENT:
-Title: ${document.title}
-Content:
-${document.content || '(Empty document)'}
-`;
+          CURRENT DOCUMENT:
+          Title: ${document.title}
+          Content:
+          ${document.content || "(Empty document)"}
+          `;
         basePrompt += `\n\n${documentContext}`;
         contextAdded = true;
       }
-    } catch (error) {
-    }
+    } catch (error) {}
   }
 
   if (mentionedDocumentIds && mentionedDocumentIds.length > 0) {
@@ -94,17 +148,16 @@ ${document.content || '(Empty document)'}
 MENTIONED DOCUMENT:
 Title: ${document.title}
 Content:
-${document.content || '(Empty document)'}
+${document.content || "(Empty document)"}
 `;
           basePrompt += `\n${mentionedContext}`;
           contextAdded = true;
         }
-      } catch (error) {
-      }
+      } catch (error) {}
     }
     basePrompt += `\n--- END MENTIONED DOCUMENTS ---`;
   }
-  
+
   return basePrompt;
 }
 
@@ -116,39 +169,42 @@ export async function GET(request: Request) {
     const session = await auth.api.getSession({ headers: requestHeaders });
 
     if (!session?.user) {
-      return new Response('Authentication error', { status: 401 });
+      return new Response("Authentication error", { status: 401 });
     }
-    
+
     const userId = session.user.id;
 
     const { searchParams } = new URL(request.url);
-    const chatId = searchParams.get('id');
+    const chatId = searchParams.get("id");
 
     if (!chatId) {
-      return new Response('Chat ID is required', { status: 400 });
+      return new Response("Chat ID is required", { status: 400 });
     }
 
     const chat = await getChatById({ id: chatId });
     if (!chat) {
-      return new Response('Chat not found', { status: 404 });
+      return new Response("Chat not found", { status: 404 });
     }
 
     if (chat.userId !== userId) {
-      return new Response('Unauthorized', { status: 401 });
+      return new Response("Unauthorized", { status: 401 });
     }
 
     const dbMessages = await getMessagesByChatId({ id: chatId });
     const uiMessages = convertToUIMessages(dbMessages);
-    
-    return new Response(JSON.stringify({
-      ...chat,
-      messages: uiMessages
-    }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+
+    return new Response(
+      JSON.stringify({
+        ...chat,
+        messages: uiMessages,
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   } catch (error) {
-    console.error('Error fetching chat:', error);
-    return new Response('Error fetching chat', { status: 500 });
+    console.error("Error fetching chat:", error);
+    return new Response("Error fetching chat", { status: 500 });
   }
 }
 
@@ -159,29 +215,31 @@ export async function POST(request: Request) {
     const session = await auth.api.getSession({ headers: requestHeaders });
 
     if (!session?.user) {
-      return new Response('Authentication error', { status: 401 });
+      return new Response("Authentication error", { status: 401 });
     }
-    
+
     const userId = session.user.id;
 
     const {
-      id: chatId,
+      id: requestId,
+      chatId: chatId,
       messages,
       selectedChatModel,
       data: requestData,
       aiOptions,
     }: {
       id: string;
-      messages: Array<Message>;
+      chatId: string;
+      messages: Array<UIMessage>; // UIMessage type
       selectedChatModel: string;
-      data?: { 
+      data?: {
         activeDocumentId?: string | null;
         mentionedDocumentIds?: string[] | null;
-        [key: string]: any; 
+        [key: string]: any;
       };
       aiOptions?: {
         customInstructions?: string | null;
-        suggestionLength?: 'short' | 'medium' | 'long';
+        suggestionLength?: "short" | "medium" | "long";
         writingStyleSummary?: string | null;
         applyStyle?: boolean;
       } | null;
@@ -190,174 +248,186 @@ export async function POST(request: Request) {
     const activeDocumentId = requestData?.activeDocumentId ?? undefined;
     const mentionedDocumentIds = requestData?.mentionedDocumentIds ?? undefined;
     const customInstructions = aiOptions?.customInstructions ?? null;
-    const suggestionLength = aiOptions?.suggestionLength ?? 'medium';
+    const suggestionLength = aiOptions?.suggestionLength ?? "medium";
     const writingStyleSummary = aiOptions?.writingStyleSummary ?? null;
     const applyStyle = aiOptions?.applyStyle ?? true;
 
     const userMessage = getMostRecentUserMessage(messages);
 
     if (!userMessage) {
-      return new Response('No user message found', { status: 400 });
+      return new Response("No user message found", { status: 400 });
     }
 
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(chatId)) {
-      return new Response('Invalid chat ID format', { status: 400 });
+      return new Response("Invalid chat ID format", { status: 400 });
     }
 
     const chat = await getChatById({ id: chatId });
 
     if (!chat) {
-      const title = await generateTitleFromUserMessage({ message: userMessage });
+      const title = await generateTitleFromUserMessage({
+        message: userMessage,
+      });
       await saveChat({
         id: chatId,
         userId: userId,
         title,
         document_context: {
           active: activeDocumentId,
-          mentioned: mentionedDocumentIds
-        }
+          mentioned: mentionedDocumentIds,
+        },
       });
     } else {
       if (chat.userId !== userId) {
-        return new Response('Unauthorized', { status: 401 });
+        return new Response("Unauthorized", { status: 401 });
       }
-      
-      await updateChatContextQuery({ 
-        chatId, 
+
+      await updateChatContextQuery({
+        chatId,
         userId,
         context: {
           active: activeDocumentId,
-          mentioned: mentionedDocumentIds
-        }
+          mentioned: mentionedDocumentIds,
+        },
       });
     }
 
     const userMessageBackendId = generateUUID();
 
+    // Save user message with parts structure
     await saveMessages({
-      messages: [{
-        id: userMessageBackendId,
-        chatId: chatId,
-        role: userMessage.role,
-        content: parseMessageContent(userMessage.content),
-        createdAt: new Date().toISOString(),
-      }],
+      messages: [
+        {
+          id: userMessageBackendId,
+          chatId: chatId,
+          role: userMessage.role,
+          content: parseMessageContent(userMessage.parts),
+          createdAt: new Date().toISOString(),
+        },
+      ],
     });
 
-    const toolSession = session;
-    if (!toolSession) {
-      return new Response('Internal Server Error', { status: 500 });
-    }
-
     let validatedActiveDocumentId: string | undefined;
-    let activeDoc: Document | null = null;
+    let activeDoc: any = null;
     if (activeDocumentId && uuidRegex.test(activeDocumentId)) {
-        try {
+      try {
         activeDoc = await getDocumentById({ id: activeDocumentId });
-          if (activeDoc) {
-            validatedActiveDocumentId = activeDocumentId;
-          }
+        if (activeDoc) {
+          validatedActiveDocumentId = activeDocumentId;
+        }
       } catch (error) {
-        console.error(`Error loading active document ${activeDocumentId}:`, error);
+        console.error(
+          `Error loading active document ${activeDocumentId}:`,
+          error
+        );
       }
     }
 
-    return createDataStreamResponse({
-      execute: async (dataStream) => {
-        const availableTools: any = {};
-        const activeToolsList: Array<'createDocument' | 'streamingDocument' | 'updateDocument' | 'webSearch'> = [];
+    const dynamicSystemPrompt = await createEnhancedSystemPrompt({
+      selectedChatModel,
+      activeDocumentId,
+      mentionedDocumentIds,
+      customInstructions,
+      writingStyleSummary,
+      applyStyle,
+      availableTools: [], // Will be set below
+    });
 
-        if (!validatedActiveDocumentId) {
-          availableTools.createDocument = aiCreateDocument({ session: toolSession, dataStream });
-          availableTools.streamingDocument = streamingDocument({ session: toolSession, dataStream });
-          activeToolsList.push('createDocument', 'streamingDocument');
-        } else if ((activeDoc?.content?.length ?? 0) === 0) {
-          availableTools.streamingDocument = streamingDocument({ session: toolSession, dataStream });
-          activeToolsList.push('streamingDocument');
-        } else {
-          availableTools.updateDocument = updateDocument({ session: toolSession, documentId: validatedActiveDocumentId });
-          activeToolsList.push('updateDocument');
-        }
+    const stream = createUIMessageStream({
+      originalMessages: messages,
+      execute: async ({ writer }) => {
+        const [dynamicSystemPrompt, toolsSetup] = await Promise.all([
+          createEnhancedSystemPrompt({
+            selectedChatModel,
+            activeDocumentId,
+            mentionedDocumentIds,
+            customInstructions,
+            writingStyleSummary,
+            applyStyle,
+            availableTools: [], // Will be populated by toolsSetup
+          }),
+          setupToolsAsync({
+            validatedActiveDocumentId,
+            activeDoc,
+            session,
+            writer,
+          }),
+        ]);
 
-        if (process.env.TAVILY_API_KEY) {
-          availableTools.webSearch = webSearch({ session: toolSession });
-          activeToolsList.push('webSearch');
-        }
+        const { availableTools, activeToolsList } = toolsSetup;
 
-        const dynamicSystemPrompt = await createEnhancedSystemPrompt({
-          selectedChatModel,
-          activeDocumentId,
-          mentionedDocumentIds,
-          customInstructions,
-          writingStyleSummary,
-          applyStyle,
-          availableTools: activeToolsList,
+        writer.write({
+          type: "data-status",
+          id: generateId(),
+          data: {
+            type: "chat-started",
+            activeDocumentId: validatedActiveDocumentId,
+            availableTools: activeToolsList,
+          },
         });
 
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: dynamicSystemPrompt,
-          messages,
-          maxSteps: 2,
-          toolCallStreaming: true,
+          messages: convertToModelMessages(messages),
+          stopWhen: stepCountIs(2),
           experimental_activeTools: activeToolsList,
-          experimental_generateMessageId: generateUUID,
-          experimental_transform: smoothStream({
-            chunking: 'word',
-          }),
+          experimental_transform: smoothStream({ chunking: "word" }),
           tools: availableTools,
-          onFinish: async ({ response, reasoning }) => {
-            if (userId) {
-              try {
-                const sanitizedResponseMessages = sanitizeResponseMessages({
-                  messages: response.messages,
-                  reasoning,
-                });
-
-                await saveMessages({
-                  messages: sanitizedResponseMessages.map((message) => ({
-                    id: message.id,
-                    chatId: chatId,
-                    role: message.role,
-                    content: parseMessageContent(message.content),
-                    createdAt: new Date().toISOString(),
-                  })),
-                });
-                
-                await updateChatContextQuery({ 
-                  chatId, 
-                  userId,
-                  context: {
-                    active: activeDocumentId,
-                    mentioned: mentionedDocumentIds
-                  }
-                });
-              } catch (error) {
-                console.error('Failed to save chat/messages onFinish:', error);
-              }
-            }
-          },
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,
-            functionId: 'stream-text',
+            functionId: "stream-text",
           },
         });
 
-        result.consumeStream();
-
-        result.mergeIntoDataStream(dataStream, {
-          sendReasoning: true,
-        });
+        writer.merge(result.toUIMessageStream());
       },
-      onError: (error) => {
-        console.error('Stream error:', error);
-        return 'Sorry, something went wrong. Please try again.';
+
+      onFinish: async ({ messages: allMessages }) => {
+        if (userId) {
+          try {
+            // Get only the assistant messages (response messages)
+            const responseMessages = allMessages.filter(
+              (msg) =>
+                msg.role === "assistant" &&
+                !allMessages
+                  .slice(0, allMessages.indexOf(msg))
+                  .some((original) => original.id === msg.id)
+            );
+
+            // Convert response messages to database format
+            const dbMessages = responseMessages.map((msg) =>
+              convertUIMessageToDBFormat(msg, chatId)
+            );
+
+            if (dbMessages.length > 0) {
+              await saveMessages({
+                messages: dbMessages,
+              });
+            }
+
+            await updateChatContextQuery({
+              chatId,
+              userId,
+              context: {
+                active: activeDocumentId,
+                mentioned: mentionedDocumentIds,
+              },
+            });
+          } catch (error) {
+            console.error("Failed to save chat/messages onFinish:", error);
+          }
+        }
       },
     });
+
+    return createUIMessageStreamResponse({ stream });
   } catch (error) {
-    console.error('Chat route error:', error);
-    return NextResponse.json({ error }, { status: 400 });
+    console.error("Chat route error:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -368,38 +438,39 @@ export async function DELETE(request: Request) {
     const session = await auth.api.getSession({ headers: requestHeaders });
 
     if (!session?.user) {
-      return new Response('Authentication error', { status: 401 });
+      return new Response("Authentication error", { status: 401 });
     }
-    
+
     const userId = session.user.id;
 
     const { searchParams } = new URL(request.url);
-    const rawChatId = searchParams.get('id');
+    const rawChatId = searchParams.get("id");
 
     if (!rawChatId) {
-      return new Response('Chat ID is required', { status: 400 });
+      return new Response("Chat ID is required", { status: 400 });
     }
 
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(rawChatId)) {
-      return new Response('Invalid chat ID format', { status: 400 });
+      return new Response("Invalid chat ID format", { status: 400 });
     }
 
     const chat = await getChatById({ id: rawChatId });
 
     if (!chat) {
-      return new Response('Chat not found', { status: 404 });
+      return new Response("Chat not found", { status: 404 });
     }
 
     if (chat.userId !== userId) {
-      return new Response('Unauthorized', { status: 401 });
+      return new Response("Unauthorized", { status: 401 });
     }
 
     await deleteChatById({ id: rawChatId });
 
     return new Response(null, { status: 204 });
   } catch (error) {
-    console.error('Error deleting chat:', error);
-    return new Response('Error deleting chat', { status: 500 });
+    console.error("Error deleting chat:", error);
+    return new Response("Error deleting chat", { status: 500 });
   }
 }

@@ -1,21 +1,20 @@
 const documentAwarenessPrompt = `
-CURRENT DOCUMENT: Read silently, never quote large chunks in your response - ONLY A THREE SENTENCE SUMMARY OF CHANGES MAX - insightful not lengthy.
+CURRENT DOCUMENT: Read the document silently to understand its content. Do not quote or summarize any part of it in your response.
 
-• Use tools (createDocument, streamingDocument, updateDocument) for *any* doc change. Do **not** echo the change as chat text.
-• One \`webSearch\` if info is outside the doc; prefer 2025-latest sources.
+TOOLS:
+- You have access to tools for modifying the document: createDocument, streamingDocument, and updateDocument.
+- Use these tools for all document changes. Do not describe the changes as text in the chat.
+- Use createDocument when a new document needs to be made.
+- Use streamingDocument to add content to an empty document.
+- Use updateDocument to make a change to a document with content.
 
-Lifecycle
-  • No doc → createDocument ⇒ streamingDocument
-  • Empty doc → streamingDocument
-  • Has content → updateDocument (call once)
+SEARCH:
+- Use webSearch if information is needed from outside the document.
+- Prioritize sources from 2025 or later.
 
-EXAMPLES
-  1. User: "Start a travel blog outline" ⇒ createDocument(title:"Travel Blog", kind:"text") then streamingDocument.
-  2. User: "Add catchy intro" ⇒ updateDocument(desc:"Add a punchy intro paragraph about sustainable travel.")
-  3. User: "Latest iPhone sales?" ⇒ webSearch("iPhone sales 2025 statistics")
-  4. User: 'Write like me' using the writing style summary and writing style snippet to help ⇒ updateDocument 
-
-Never expose tool names/IDs to the user.`;
+RESTRICTIONS:
+- **Never expose any tool names or any IDs to the user**.
+`;
 
 const writingQualityPrompt = `
 STYLE
@@ -32,11 +31,11 @@ export function buildArtifactsPrompt(
 
   if (tools.includes('createDocument')) {
     prompt +=
-      '\n- createDocument: Create a new empty document with a title and kind.';
+      '\n- createDocument: Create a new document with a title, kind and content.';
   }
   if (tools.includes('streamingDocument')) {
     prompt +=
-      '\n- streamingDocument: Stream generated content into the document (initial content when empty).';
+      '\n- streamingDocument: Stream generated content into the document (initial content only when doc is empty).';
   }
   if (tools.includes('updateDocument')) {
     prompt +=
