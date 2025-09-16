@@ -125,9 +125,8 @@ export default function Home() {
 
           {/* Social Proof */}
           <div className="flex flex-col items-center mt-6">
-              <div className="flex flex-col items-center gap-4 md:gap-5">
-                <div className="text-md tracking-tight text-muted-foreground text-center">Used by</div>
-                <div className="max-w-4xl mx-auto w-full">
+            <div className="flex flex-wrap items-center justify-center gap-4 md:gap-5">
+              <span className="text-xs tracking-tight text-muted-foreground">Used by</span>
               <div className="flex items-center justify-center gap-5 md:gap-6 opacity-80">
                 <Image
                   src="/images/figma-logo.svg"
@@ -139,9 +138,9 @@ export default function Home() {
                 <Image
                   src="/images/vercel-logo.svg"
                   alt="Vercel logo"
-                  width={64}
-                  height={16}
-                  className="h-5 w-auto invert dark:invert-0"
+                  width={56}
+                  height={14}
+                  className="h-4 w-auto invert dark:invert-0"
                 />
                 <Image
                   src="/images/granola-logo.svg"
@@ -151,45 +150,44 @@ export default function Home() {
                   className="h-5 w-auto invert dark:invert-0"
                 />
               </div>
-            </div>
-                      
-                <div className="flex flex-wrap items-center justify-center gap-2.5 md:gap-3 text-xs">
-                  <Link
-                    href="https://x.com/leerob"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group flex items-center gap-1.5 rounded-full border border-border bg-background px-3 md:px-4 h-8 md:h-10 w-36 md:w-48 justify-start text-xs whitespace-nowrap hover:bg-accent hover:text-accent-foreground transition-colors"
-                  >
-                    <Image
-                      src="/images/leerob.jpg"
-                      alt="Lee Robinson"
-                      width={24}
-                      height={24}
-                      className="size-6 rounded-full object-cover shrink-0"
-                    />
-                    <span className="font-medium">@leerob</span>
-                    <span className="hidden md:inline text-muted-foreground/60">VP DX, Cursor</span>
-                  </Link>
+              <span className="h-6 md:h-8 w-px bg-border" />
+              <div className="flex flex-wrap items-center justify-center gap-2.5 md:gap-3 text-xs">
+                <Link
+                  href="https://x.com/leerob"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex items-center gap-1.5 rounded-full border border-border bg-background pl-2 md:pl-3 pr-3 md:pr-4 h-8 md:h-10 w-36 md:w-48 justify-center text-xs whitespace-nowrap hover:bg-accent hover:text-accent-foreground transition-colors"
+                >
+                  <Image
+                    src="/images/leerob.jpg"
+                    alt="Lee Robinson"
+                    width={24}
+                    height={24}
+                    className="size-6 rounded-full object-cover shrink-0"
+                  />
+                  <span className="font-medium">@leerob</span>
+                  <span className="hidden md:inline text-muted-foreground/60">VP DX, Cursor</span>
+                </Link>
 
-                  <Link
-                    href="https://x.com/dps"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group flex items-center gap-1.5 rounded-full border border-border bg-background px-3 md:px-4 h-8 md:h-10 w-36 md:w-48 justify-start text-xs whitespace-nowrap hover:bg-accent hover:text-accent-foreground transition-colors"
-                  >
-                    <Image
-                      src="/images/dps.jpg"
-                      alt="David Singleton"
-                      width={24}
-                      height={24}
-                      className="size-6 rounded-full object-cover shrink-0"
-                    />
-                    <span className="font-medium">@dps</span>
-                    <span className="hidden md:inline text-muted-foreground/60">ex-CTO, Stripe</span>
-                  </Link>
-                </div>
+                <Link
+                  href="https://x.com/dps"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex items-center gap-1.5 rounded-full border border-border bg-background pl-2 md:pl-3 pr-3 md:pr-4 h-8 md:h-10 w-36 md:w-48 justify-center text-xs whitespace-nowrap hover:bg-accent hover:text-accent-foreground transition-colors"
+                >
+                  <Image
+                    src="/images/dps.jpg"
+                    alt="David Singleton"
+                    width={24}
+                    height={24}
+                    className="size-6 rounded-full object-cover shrink-0"
+                  />
+                  <span className="font-medium">@dps</span>
+                  <span className="hidden md:inline text-muted-foreground/60">ex-CTO, Stripe</span>
+                </Link>
               </div>
             </div>
+          </div>
 
           <div className="mt-12 flex justify-center w-full">
             <div className="hero-frame">
@@ -233,7 +231,7 @@ export default function Home() {
                 height={48}
                 className="size-12 rounded-full object-cover"
               />
-              <blockquote className="text-lg md:text-xl italic text-muted-foreground max-w-prose leading-relaxed">
+              <blockquote className="text-lg md:text-xl italic text-muted-foreground max-w-prose leading-relaxed text-balance">
                 “I went in expecting slop, but it&apos;s actually good. The app looked so good, and it looks legitimately useful.”
               </blockquote>
               <figcaption className="text-sm text-foreground font-medium flex flex-col items-center">
