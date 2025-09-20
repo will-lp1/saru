@@ -4,6 +4,8 @@ import {
   smoothStream,
   stepCountIs,
   convertToModelMessages,
+  createUIMessageStream,
+  JsonToSseTransformStream,
 } from 'ai';
 import { systemPrompt } from '@/lib/ai/prompts';
 import {
@@ -198,7 +200,6 @@ export async function POST(request: Request) {
     const applyStyle = aiOptions?.applyStyle ?? true;
 
     const userMessage = getMostRecentUserMessage(messages);
-
     if (!userMessage) {
       return new Response('No user message found', { status: 400 });
     }
@@ -299,54 +300,56 @@ export async function POST(request: Request) {
       availableTools: activeToolsList,
     });
 
-    const result = streamText({
-      model: myProvider.languageModel(selectedChatModel),
-      system: dynamicSystemPrompt,
-      messages: convertToModelMessages(messages),
-      stopWhen: stepCountIs(2),
-      experimental_activeTools: activeToolsList,
+    const stream = createUIMessageStream({
+      execute: ({ writer: dataStream }) => {
+        // Rebuild tools with dataStream for streaming tool events
+        const toolsWithStream: any = { ...availableTools };
+        if (toolsWithStream.streamingDocument) {
+          toolsWithStream.streamingDocument = streamingDocument({ session: toolSession, dataStream });
+        }
 
-      experimental_transform: smoothStream({
-        chunking: 'word',
-      }),
+        const result = streamText({
+          model: myProvider.languageModel(selectedChatModel),
+          system: dynamicSystemPrompt,
+          messages: convertToModelMessages(messages),
+          stopWhen: stepCountIs(2),
+          experimental_activeTools: activeToolsList,
+          experimental_transform: smoothStream({ chunking: 'word' }),
+          tools: toolsWithStream,
+        });
 
-      tools: availableTools,
-
-      experimental_telemetry: {
-        isEnabled: isProductionEnvironment,
-        functionId: 'stream-text',
-      }
-    });
-
-    // Use AI SDK v5 pattern
-    return result.toUIMessageStreamResponse({
-      originalMessages: messages,
-      generateMessageId: () => generateUUID(),
-      onFinish: async ({ messages: allMessages, responseMessage }) => {
+        result.consumeStream();
+        dataStream.merge(result.toUIMessageStream({ sendReasoning: true }));
+      },
+      generateId: generateUUID,
+      onFinish: async ({ messages: allMessages }) => {
         if (userId) {
           try {
-            // Convert the response message to database format
-            const dbMessage = convertUIMessageToDBFormat(
-              responseMessage,
+            const assistant = allMessages.find((m) => m.role === 'assistant') ?? allMessages[allMessages.length - 1];
+            if (assistant) {
+              const dbMessage = convertUIMessageToDBFormat(assistant, chatId);
+              await saveMessages({ messages: [dbMessage] });
+            }
+            await updateChatContextQuery({
               chatId,
-            );
-
-            await saveMessages({
-              messages: [dbMessage],
-            });
-            
-            await updateChatContextQuery({ 
-              chatId, 
               userId,
               context: {
                 active: activeDocumentId,
-                mentioned: mentionedDocumentIds
-              }
+                mentioned: mentionedDocumentIds,
+              },
             });
           } catch (error) {
             console.error('Failed to save chat/messages onFinish:', error);
           }
         }
+      },
+      onError: () => 'Oops, an error occurred!',
+    });
+
+    return new Response(stream.pipeThrough(new JsonToSseTransformStream()), {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
       },
     });
 

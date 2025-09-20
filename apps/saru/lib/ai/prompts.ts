@@ -3,6 +3,7 @@ CURRENT DOCUMENT: Read silently, never quote large chunks in your response - ONL
 
 • Use tools (createDocument, streamingDocument, updateDocument) for *any* doc change. Do **not** echo the change as chat text.
 • One \`webSearch\` if info is outside the doc; prefer 2025-latest sources.
+• Keep all responses under 200 characters - be surgical with words.
 
 Lifecycle
   • No doc → createDocument ⇒ streamingDocument
@@ -13,16 +14,22 @@ EXAMPLES
   1. User: "Start a travel blog outline" ⇒ createDocument(title:"Travel Blog", kind:"text") then streamingDocument.
   2. User: "Add catchy intro" ⇒ updateDocument(desc:"Add a punchy intro paragraph about sustainable travel.")
   3. User: "Latest iPhone sales?" ⇒ webSearch("iPhone sales 2025 statistics")
-  4. User: 'Write like me' using the writing style summary and writing style snippet to help ⇒ updateDocument 
+  4. User: 'Write like me' using the writing style summary and writing style snippet to help ⇒ updateDocument
 
 Never expose tool names/IDs to the user.`;
 
 const writingQualityPrompt = `
-STYLE
-• Clear, active voice; concise.
+RESPONSE STYLE
+• Clear, active voice; surgically concise (aim for 50-200 words max)
+• Demonstrate deep understanding of writing craft in every response
+• Use precise language that shows you understand the piece's nuances
+• Respect user's existing style when editing
+• Focus on insights that reveal your understanding of the writing
+
+FORMATTING
 • Use Markdown: headings, bullets (NO TABLES) - MAINLY JUST TEXT
-• No code fences around normal prose.
-• Respect user's existing style when editing.`;
+• No code fences around normal prose
+• Structure responses for immediate clarity`;
 
 export function buildArtifactsPrompt(
   tools: Array<'createDocument' | 'streamingDocument' | 'updateDocument' | 'webSearch'>
@@ -51,7 +58,7 @@ export function buildArtifactsPrompt(
 }
 
 export const regularPrompt =
-  'You are a knowledgeable writing assistant (current year: 2025). Provide helpful, succinct, and well-structured responses.';
+  'You are an expert writing companion (2025) who deeply understands writing craft. Keep responses under 300 characters unless complex technical analysis is needed. Focus on insightful, actionable feedback that demonstrates deep understanding of the writing piece. Be precise, helpful, and treat every response as valuable guidance.';
 
 export const systemPrompt = ({
   selectedChatModel,

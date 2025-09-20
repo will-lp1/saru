@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useDocument } from '@/hooks/use-document';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { Markdown } from '@/components/markdown';
 
 // Lazy-load diff viewer to keep initial bundle small.
 const DiffView = dynamic(() => import('./diffview').then(m => m.DiffView), {
@@ -13,8 +14,10 @@ const DiffView = dynamic(() => import('./diffview').then(m => m.DiffView), {
   loading: () => <div className="p-3 text-xs text-muted-foreground">Loading diff…</div>,
 });
 
+type ToolActionType = 'create' | 'stream' | 'update' | 'request-suggestions';
+
 const getActionText = (
-  type: 'create' | 'stream' | 'update' | 'request-suggestions',
+  type: ToolActionType,
   tense: 'present' | 'past',
 ) => {
   switch (type) {
@@ -33,17 +36,42 @@ const getActionText = (
   }
 };
 
+// Result shapes (best-effort typing based on known tools)
+interface BaseResult {
+  title?: string;
+  status?: string;
+  error?: string;
+}
+
+interface CreateResult extends BaseResult {
+  id?: string;
+  message?: string;
+}
+
+interface StreamResult extends BaseResult {
+  content?: string;
+  message?: string;
+}
+
+interface UpdateResult extends BaseResult {
+  id?: string;
+  originalContent?: string;
+  newContent?: string;
+}
+
+interface SuggestionResult extends BaseResult {
+  suggestions?: Array<string>;
+}
+
+type DocumentToolUnifiedResult =
+  | CreateResult
+  | StreamResult
+  | UpdateResult
+  | SuggestionResult;
+
 interface DocumentToolResultProps {
-  type: 'create' | 'stream' | 'update' | 'request-suggestions';
-  result: {
-    id?: string;
-    title?: string;
-    originalContent?: string;
-    newContent?: string;
-    status?: string;
-    error?: string;
-    content?: string;
-  };
+  type: ToolActionType;
+  result: DocumentToolUnifiedResult;
   isReadonly: boolean;
 }
 
@@ -62,7 +90,7 @@ function PureDocumentToolResult({
   });
   const [isRejected, setIsRejected] = useState(false);
 
-  const isUpdateProposal = 
+  const isUpdateProposal =
     type === 'update' && 
     result.originalContent !== undefined && 
     result.newContent !== undefined &&
@@ -206,28 +234,51 @@ function PureDocumentToolResult({
     );
   }
 
-  const successMessage = 
-    type === 'create' 
-      ? (result.content || 'Document initialized successfully.') 
-      : type === 'stream' 
-        ? (result.content || 'Content generation completed.') 
-        : 'Operation successful.';
+  const successMessage = (() => {
+    if (type === 'create') return (result as CreateResult).message || 'Document initialized successfully.';
+    if (type === 'stream') return (result as StreamResult).message || 'Content generation completed.';
+    if (type === 'request-suggestions') return 'Suggestions ready.';
+    return 'Operation successful.';
+  })();
 
   const SuccessIcon = CheckCircleFillIcon;
 
   return (
-    <div className="bg-background border rounded-xl w-full max-w-md flex flex-row items-center text-sm overflow-hidden p-3 gap-3">
-       <div className="text-green-600 flex-shrink-0">
-         <SuccessIcon size={16}/>
-       </div>
-       <div className="flex-grow">
-         <div className="text-foreground">
-           {`${getActionText(type, 'past')} ${result.title ? `"${result.title}"` : '(active document)'}`}
-         </div>
-         <div className="text-xs text-muted-foreground mt-0.5">
-           {successMessage}
-         </div>
-       </div>
+    <div className="bg-background border rounded-xl w-full max-w-md text-sm overflow-hidden">
+      <div className="p-3 flex items-start gap-3 border-b bg-muted/30">
+        <div className="text-green-600 flex-shrink-0">
+          <SuccessIcon size={16} />
+        </div>
+        <div className="flex-grow">
+          <div className="text-foreground">
+            {`${getActionText(type, 'past')} ${result.title ? `"${result.title}"` : '(active document)'}`}
+            {result.status && (
+              <span className="ml-2 text-xs text-muted-foreground">({result.status})</span>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">{successMessage}</div>
+        </div>
+      </div>
+
+      {type === 'stream' && (result as StreamResult).content && (
+        <div className="p-3">
+          <div className="text-xs mb-1 text-muted-foreground">Generated content</div>
+          <div className="border rounded-md p-2 max-h-60 overflow-auto bg-card">
+            <Markdown>{(result as StreamResult).content as string}</Markdown>
+          </div>
+        </div>
+      )}
+
+      {type === 'request-suggestions' && Array.isArray((result as SuggestionResult).suggestions) && (
+        <div className="p-3">
+          <div className="text-xs mb-1 text-muted-foreground">Suggestions</div>
+          <ul className="list-disc pl-5 space-y-1">
+            {(result as SuggestionResult).suggestions!.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -235,7 +286,7 @@ function PureDocumentToolResult({
 export const DocumentToolResult = memo(PureDocumentToolResult);
 
 interface DocumentToolCallProps {
-  type: 'create' | 'stream' | 'update' | 'request-suggestions';
+  type: ToolActionType;
   args: { title?: string };
   isReadonly: boolean;
 }
@@ -261,21 +312,23 @@ function PureDocumentToolCall({
     LoaderIcon;
 
   return (
-    <div
-      className="bg-background border rounded-xl w-full max-w-md flex flex-row items-center justify-between gap-3 text-sm overflow-hidden"
-    >
-      <div className="p-3 flex flex-row gap-3 items-center w-full bg-muted/30">
+    <div className="bg-background border rounded-xl w-full max-w-md text-sm overflow-hidden">
+      <div className="p-3 flex items-center gap-3 w-full bg-muted/30">
         <div className="text-muted-foreground flex-shrink-0">
-          <CallIcon size={16}/>
+          <CallIcon size={16} />
         </div>
         <div className="text-left flex-grow text-foreground">
-          {`${getActionText(type, 'present')}`}{' '}
-          {displayTitle ? `"${displayTitle}"` : '(active document)'}
+          {getActionText(type, 'present')} {displayTitle ? `"${displayTitle}"` : '(active document)'}
         </div>
         <div className="animate-spin text-muted-foreground flex-shrink-0">
-            <LoaderIcon size={16} />
+          <LoaderIcon size={16} />
         </div>
       </div>
+      {type === 'stream' && displayTitle && (
+        <div className="p-2 text-xs text-muted-foreground">
+          Streaming content in real time…
+        </div>
+      )}
     </div>
   );
 }

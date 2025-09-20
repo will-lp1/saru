@@ -13,8 +13,6 @@ import { FileText } from 'lucide-react';
 import { MentionedDocument } from './multimodal-input';
 import { useDocument } from '@/hooks/use-document';
 import { DEFAULT_CHAT_MODEL } from '@/lib/ai/models';
-// import { DataStreamHandler } from '@/components/data-stream-handler';
-import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { useAiOptionsValue } from '@/hooks/ai-options';
 import { mutate as globalMutate } from 'swr';
@@ -75,10 +73,22 @@ export function Chat({
     stop,
     regenerate,
   } = useChat({
+  id: chatId,
   transport: new DefaultChatTransport({
     api: '/api/chat',
   }),
   messages: initialMessages,
+  // Forward custom data events from the UI stream to the editor plugin
+  onData: (data: any) => {
+    try {
+      if (data?.kind === 'editor-stream-text' && typeof data.content === 'string') {
+        const event = new CustomEvent('editor:stream-text', {
+          detail: { documentId: document.documentId, content: data.content },
+        });
+        window.dispatchEvent(event);
+      }
+    } catch {}
+  },
   onError: (err) => {
     console.error('Chat Error:', err);
   },

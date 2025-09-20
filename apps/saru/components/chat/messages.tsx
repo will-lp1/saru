@@ -3,7 +3,6 @@ import { PreviewMessage, ThinkingMessage } from './message';
 import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
 import { Overview } from './overview';
 import { Dispatch, memo, SetStateAction } from 'react';
-import equal from 'fast-deep-equal';
 import { UseChatHelpers } from '@ai-sdk/react';
 
 interface MessagesProps {
@@ -60,12 +59,4 @@ function PureMessages({
   );
 }
 
-export const Messages = memo(PureMessages, (prevProps, nextProps) => {
-  if (prevProps.isArtifactVisible && nextProps.isArtifactVisible) return true;
-
-  if (prevProps.status !== nextProps.status) return false;
-  if (prevProps.status && nextProps.status) return false;
-  if (prevProps.messages.length !== nextProps.messages.length) return false;
-  if (!equal(prevProps.messages, nextProps.messages)) return false;
-  return true;
-});
+export const Messages = memo(PureMessages, () => false);

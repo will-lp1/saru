@@ -18,7 +18,6 @@ export function creationStreamingPlugin(targetDocumentId: string) {
         const { documentId, content } = event.detail;
         if (documentId !== targetDocumentId) return;
         try {
-          // parse the Markdown chunk into a document fragment using existing utility
           const docNode = buildDocumentFromContent(content);
           const fragment = docNode.content;
           const { state, dispatch } = editorView;

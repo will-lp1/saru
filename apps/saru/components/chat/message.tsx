@@ -1,9 +1,9 @@
 "use client";
 
-import type { ChatRequestOptions, UIMessage } from "ai";
+import type { UIMessage } from "ai";
 import cx from "classnames";
 import { AnimatePresence, motion } from "framer-motion";
-import { memo, useState } from "react";
+import { memo, useRef, useState, useEffect } from "react";
 import {
   DocumentToolCall,
   DocumentToolResult,
@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils";
 import { MessageReasoning } from "./message-reasoning";
 import Image from "next/image";
 import { UseChatHelpers } from "@ai-sdk/react";
+import { dispatchEditorStreamText } from "@/lib/ai/document-helpers";
+import { useDocument } from "@/hooks/use-document";
 
 function formatMessageWithMentions(content: string) {
   if (!content) return content;
@@ -76,6 +78,8 @@ const PurePreviewMessage = ({
   regenerate: UseChatHelpers<UIMessage>["regenerate"];
   isReadonly: boolean;
 }) => {
+  const { document } = useDocument();
+  const dispatchedKeysRef = useRef<Set<string>>(new Set());
   console.log("[PreviewMessage] Rendering message:", message);
 
   // Extract reasoning from parts array
@@ -153,22 +157,32 @@ const PurePreviewMessage = ({
               </div>
             )}
 
-            {toolParts.map((part, index) => {
-              // Handle webSearch tool
-
+            {message.parts?.map((part, index) => {
+              // Dispatch editor stream event when streaming tool finishes with content
+              if (
+                ((part as any).type === "tool-streamDocument" || (part as any).type === "tool-streamingDocument") &&
+                (part as any).state === "output-available" &&
+                (part as any).output?.content
+              ) {
+                const key = `${message.id}-tool-streamDocument-${index}`;
+                if (!dispatchedKeysRef.current.has(key)) {
+                  dispatchedKeysRef.current.add(key);
+                  dispatchEditorStreamText({
+                    documentId: document.documentId,
+                    content: (part as any).output.content,
+                  });
+                }
+              }
+              // Maintain original stream order by iterating parts directly
               if (part.type === "tool-webSearch") {
                 if (part.state === "output-available" && "output" in part) {
-                  const result = part.output as any;
-
-                  const input = "input" in part ? (part.input as any) : {};
-
+                  const result = (part as any).output;
+                  const input = "input" in part ? (part as any).input : {};
                   const query = input?.query || "";
-
                   const results = result?.results || [];
-
                   return (
                     <WebSearchResult
-                      key={`web-search-result-${index}`}
+                      key={`tool-webSearch-${index}`}
                       query={query}
                       results={results}
                     />
@@ -176,46 +190,33 @@ const PurePreviewMessage = ({
                 }
 
                 if (
-                  part.state === "input-streaming" ||
-                  part.state === "input-available"
+                  (part as any).state === "input-streaming" ||
+                  (part as any).state === "input-available"
                 ) {
-                  const input = "input" in part ? (part.input as any) : {};
-
+                  const input = "input" in part ? (part as any).input : {};
                   const query = input?.query || "";
-
                   return (
                     <div
-                      key={`web-search-loading-${index}`}
+                      key={`tool-webSearch-loading-${index}`}
                       className="bg-background border rounded-xl w-full max-w-md p-3 text-sm animate-pulse"
                     >
                       Searching web for &quot;{query}&quot;...
                     </div>
                   );
                 }
+                return null;
               }
-              // Handle tool parts with dynamic type checking
+
               if (part.type?.startsWith("tool-") && "state" in part) {
-                if (part.state === "output-available" && "output" in part) {
-                  const result = part.output;
+                const p: any = part as any;
+                let actionType: "create" | "stream" | "update" | "request-suggestions" = "update";
+                if (p.type === "tool-updateDocument") actionType = "update";
+                else if (p.type === "tool-createDocument") actionType = "create";
+                else if (p.type === "tool-streamingDocument") actionType = "stream";
 
-                  let actionType:
-                    | "create"
-                    | "stream"
-                    | "update"
-                    | "request-suggestions" = "update";
-
-                  if (part.type === "tool-updateDocument") {
-                    actionType = "update";
-                  } else if (part.type === "tool-createDocument") {
-                    actionType = "create";
-                  } else if (part.type === "tool-streamDocument") {
-                    actionType = "stream";
-                  } else if (part.type === "tool-requestSuggestions") {
-                    actionType = "request-suggestions";
-                  }
-
-                  // Type guard for result structure
-                  if (result && typeof result === "object" && result !== null) {
+                if (p.state === "output-available" && "output" in p) {
+                  const result = p.output;
+                  if (result && typeof result === "object") {
                     return (
                       <DocumentToolResult
                         key={`tool-result-${index}`}
@@ -227,28 +228,8 @@ const PurePreviewMessage = ({
                   }
                 }
 
-                if (
-                  part.state === "streaming" ||
-                  part.state === "input-available"
-                ) {
-                  let actionType:
-                    | "create"
-                    | "stream"
-                    | "update"
-                    | "request-suggestions" = "update";
-
-                  if (part.type === "tool-updateDocument") {
-                    actionType = "update";
-                  } else if (part.type === "tool-createDocument") {
-                    actionType = "create";
-                  } else if (part.type === "tool-streamDocument") {
-                    actionType = "stream";
-                  } else if (part.type === "tool-requestSuggestions") {
-                    actionType = "request-suggestions";
-                  }
-
-                  const input = "input" in part ? part.input : {};
-
+                if (p.state === "streaming" || p.state === "input-available") {
+                  const input = "input" in p ? p.input : {};
                   return (
                     <DocumentToolCall
                       key={`tool-call-${index}`}
@@ -281,19 +262,8 @@ export const PreviewMessage = memo(
   PurePreviewMessage,
   (prevProps, nextProps) => {
     if (prevProps.isLoading !== nextProps.isLoading) return false;
-
-    // Update comparison logic for parts-based reasoning
-    const prevReasoning = prevProps.message.parts?.find(
-      (part) => part.type === "reasoning"
-    )?.text;
-    const nextReasoning = nextProps.message.parts?.find(
-      (part) => part.type === "reasoning"
-    )?.text;
-    if (prevReasoning !== nextReasoning) return false;
-
-    // Compare parts array
     if (!equal(prevProps.message.parts, nextProps.message.parts)) return false;
-    return true;
+    return false;
   }
 );
 
@@ -336,7 +306,6 @@ export const ThinkingMessage = () => {
   );
 };
 
-// Insert collapsible search result component
 function WebSearchResult({
   query,
   results,
