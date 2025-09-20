@@ -15,7 +15,6 @@ import { cn } from "@/lib/utils";
 import { MessageReasoning } from "./message-reasoning";
 import Image from "next/image";
 import { UseChatHelpers } from "@ai-sdk/react";
-import { dispatchEditorStreamText } from "@/lib/ai/document-helpers";
 import { useDocument } from "@/hooks/use-document";
 
 function formatMessageWithMentions(content: string) {
@@ -98,6 +97,9 @@ const PurePreviewMessage = ({
 
   console.log("[PreviewMessage] Tool parts found:", toolParts);
 
+  // Note: Live streaming into the editor is handled via Chat.onData → window events.
+  // We intentionally avoid dispatching editor updates from message rendering.
+
   return (
     <AnimatePresence>
       <motion.div
@@ -158,21 +160,6 @@ const PurePreviewMessage = ({
             )}
 
             {message.parts?.map((part, index) => {
-              // Dispatch editor stream event when streaming tool finishes with content
-              if (
-                ((part as any).type === "tool-streamDocument" || (part as any).type === "tool-streamingDocument") &&
-                (part as any).state === "output-available" &&
-                (part as any).output?.content
-              ) {
-                const key = `${message.id}-tool-streamDocument-${index}`;
-                if (!dispatchedKeysRef.current.has(key)) {
-                  dispatchedKeysRef.current.add(key);
-                  dispatchEditorStreamText({
-                    documentId: document.documentId,
-                    content: (part as any).output.content,
-                  });
-                }
-              }
               // Maintain original stream order by iterating parts directly
               if (part.type === "tool-webSearch") {
                 if (part.state === "output-available" && "output" in part) {

@@ -79,13 +79,29 @@ export function Chat({
   }),
   messages: initialMessages,
   // Forward custom data events from the UI stream to the editor plugin
-  onData: (data: any) => {
+  onData: (payload: any) => {
     try {
-      if (data?.kind === 'editor-stream-text' && typeof data.content === 'string') {
+      const data = payload && typeof payload === 'object' && 'data' in payload ? (payload as any).data : payload;
+      if (data?.kind === 'editor-stream-text' && typeof (data as any).content === 'string') {
         const event = new CustomEvent('editor:stream-text', {
-          detail: { documentId: document.documentId, content: data.content },
+          detail: { documentId: document.documentId, content: (data as any).content },
         });
         window.dispatchEvent(event);
+      }
+
+      // Artifact streaming bridge: forward markdown artifact deltas to editor
+      if (data?.kind === 'artifact' && data?.name === 'markdown' && typeof (data as any).delta === 'string') {
+        const artifactEvent = new CustomEvent('editor:stream-artifact', {
+          detail: { documentId: document.documentId, name: 'markdown', delta: (data as any).delta },
+        });
+        window.dispatchEvent(artifactEvent);
+      }
+
+      if (data?.kind === 'editor-stream-finish') {
+        const finishEvent = new CustomEvent('editor:creation-stream-finished', {
+          detail: { documentId: document.documentId },
+        });
+        window.dispatchEvent(finishEvent);
       }
     } catch {}
   },

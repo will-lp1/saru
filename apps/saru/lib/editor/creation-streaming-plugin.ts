@@ -14,25 +14,57 @@ export function creationStreamingPlugin(targetDocumentId: string) {
   return new Plugin({
     key: creationStreamingKey,
     view(editorView) {
-      const handleStream = (event: CustomEvent) => {
-        const { documentId, content } = event.detail;
-        if (documentId !== targetDocumentId) return;
+      let pendingMarkdown = '';
+      let rafId: number | null = null;
+
+      const flush = () => {
+        rafId = null;
+        const chunk = pendingMarkdown;
+        pendingMarkdown = '';
+        if (!chunk) return;
         try {
-          const docNode = buildDocumentFromContent(content);
+          const docNode = buildDocumentFromContent(chunk);
           const fragment = docNode.content;
           const { state, dispatch } = editorView;
           const endPos = state.doc.content.size;
           const tr = state.tr.insert(endPos, fragment);
           dispatch(tr);
         } catch (err) {
-          console.error('[CreationStreamingPlugin] Failed to insert stream fragment:', err);
+          console.error('[CreationStreamingPlugin] Failed to flush stream fragment:', err);
         }
       };
 
+      const scheduleFlush = () => {
+        if (rafId != null) return;
+        rafId = requestAnimationFrame(flush);
+      };
+
+      const queueMarkdown = (markdown: string) => {
+        if (!markdown) return;
+        pendingMarkdown += markdown;
+        scheduleFlush();
+      };
+
+      const handleStream = (event: CustomEvent) => {
+        const { documentId, content } = event.detail;
+        if (documentId !== targetDocumentId) return;
+        queueMarkdown(content);
+      };
+
+      const handleArtifact = (event: CustomEvent) => {
+        const { documentId, name, delta } = event.detail ?? {};
+        if (documentId !== targetDocumentId) return;
+        if (name !== 'markdown') return;
+        queueMarkdown(typeof delta === 'string' ? delta : '');
+      };
+
       window.addEventListener('editor:stream-text', handleStream as EventListener);
+      window.addEventListener('editor:stream-artifact', handleArtifact as EventListener);
       return {
         destroy() {
           window.removeEventListener('editor:stream-text', handleStream as EventListener);
+          window.removeEventListener('editor:stream-artifact', handleArtifact as EventListener);
+          if (rafId != null) cancelAnimationFrame(rafId);
         },
       };
     },
