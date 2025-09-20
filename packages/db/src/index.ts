@@ -3,33 +3,42 @@ import postgres from 'postgres';
 import * as schema from './schema';
 
 if (!process.env.DATABASE_URL) {
-  // Log an error, but don't throw, to allow Vercel env vars to work
   console.error('🔴 DATABASE_URL environment variable is not set in the runtime environment.');
 }
 
-// --- Start Debug Logging ---
-console.log(`[DB Connection] NODE_ENV: ${process.env.NODE_ENV}`);
 const isProduction = process.env.NODE_ENV === 'production';
-const sslSetting = isProduction ? ('require' as const) : undefined;
-console.log(`[DB Connection] SSL Setting: ${sslSetting === undefined ? 'undefined (disabled)' : sslSetting}`);
-// --- End Debug Logging ---
-
 const connectionOptions: postgres.Options<Record<string, postgres.PostgresType>> = {
-  max: 1, // Suitable for serverless or local dev
-  // Only require SSL in production, allow non-SSL for local dev/other environments
-  ssl: sslSetting
+  max: 1,
+  ssl: isProduction ? ('require' as const) : undefined,
 };
 
-// Log the URL being used (without credentials for safety)
-const urlLog = process.env.DATABASE_URL?.split('@')?.[1] ?? 'URL not set or invalid';
-console.log(`Attempting to connect DB client to: ${urlLog}`);
+const queryClient = postgres(
+  process.env.DATABASE_URL || 'postgresql://invalid:invalid@invalid/invalid',
+  connectionOptions,
+);
 
-// Create the connection pool
-// Use process.env.DATABASE_URL or a default dummy URL if not set
-const queryClient = postgres(process.env.DATABASE_URL || 'postgresql://invalid:invalid@invalid/invalid', connectionOptions);
+const shouldLogQueries = process.env.DB_LOG_QUERIES === 'true';
+const safeLogger = shouldLogQueries
+  ? {
+      logQuery(query: string, params: unknown[]) {
+        const MAX_PREVIEW = 160;
+        const MAX_TOTAL = 320;
+        const toPreview = (v: unknown) => {
+          try {
+            if (typeof v === 'string') return v.length > MAX_PREVIEW ? `${v.slice(0, MAX_PREVIEW)}… [${v.length} chars]` : v;
+            const s = JSON.stringify(v);
+            return s.length > MAX_PREVIEW ? `${s.slice(0, MAX_PREVIEW)}… [${s.length} chars]` : s;
+          } catch {
+            return '[unserializable]';
+          }
+        };
+        const safeParams = Array.isArray(params) ? params.slice(0, 20).map(toPreview) : [];
+        const str = JSON.stringify(safeParams);
+        const trimmed = str.length > MAX_TOTAL ? `${str.slice(0, MAX_TOTAL)}… [truncated]` : str;
+        console.log('DB Query:', query, '-- params:', trimmed);
+      },
+    }
+  : false;
 
-// Create the Drizzle instance
-export const db = drizzle(queryClient, { schema, logger: process.env.NODE_ENV === 'development' }); // Enable logger in dev
-
-// Re-export the schema for easy imports in the app
-export * from './schema'; 
+export const db = drizzle(queryClient, { schema, logger: safeLogger });
+export * from './schema';
