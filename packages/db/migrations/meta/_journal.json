@@ -15,6 +15,13 @@
       "when": 1756209447961,
       "tag": "0001_chief_mother_askani",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1756752745476,
+      "tag": "0002_early_joystick",
+      "breakpoints": true
     }
   ]
 }
