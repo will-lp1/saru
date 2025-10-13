@@ -269,19 +269,27 @@ export async function POST(request: Request) {
     const availableTools: any = {};
     const activeToolsList: Array<'createDocument' | 'streamingDocument' | 'updateDocument' | 'webSearch'> = [];
 
+    const activeDocumentContent = activeDoc?.content ?? '';
+    const isActiveDocumentEmpty = activeDocumentContent.trim().length === 0;
+
     if (!validatedActiveDocumentId) {
       availableTools.createDocument = createDocument({ session: toolSession });
       availableTools.streamingDocument = streamingDocument({ session: toolSession });
       activeToolsList.push('createDocument', 'streamingDocument');
-    } else if ((activeDoc?.content?.length ?? 0) === 0) {
-      availableTools.streamingDocument = streamingDocument({
+    } else {
+      availableTools.updateDocument = updateDocument({
         session: toolSession,
         documentId: validatedActiveDocumentId,
       });
-      activeToolsList.push('streamingDocument');
-    } else {
-      availableTools.updateDocument = updateDocument({ session: toolSession, documentId: validatedActiveDocumentId });
       activeToolsList.push('updateDocument');
+
+      if (isActiveDocumentEmpty) {
+        availableTools.streamingDocument = streamingDocument({
+          session: toolSession,
+          documentId: validatedActiveDocumentId,
+        });
+        activeToolsList.push('streamingDocument');
+      }
     }
 
     if (process.env.TAVILY_API_KEY) {
