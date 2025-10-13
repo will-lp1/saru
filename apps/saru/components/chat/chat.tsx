@@ -16,6 +16,7 @@ import { DEFAULT_CHAT_MODEL } from '@/lib/ai/models';
 import { Loader2 } from 'lucide-react';
 import { useAiOptionsValue } from '@/hooks/ai-options';
 import { mutate as globalMutate } from 'swr';
+import type { ChatContextPayload } from '@/types/chat';
 
 export interface ChatProps {
   id?: string;
@@ -82,9 +83,13 @@ export function Chat({
   onData: (payload: any) => {
     try {
       const data = payload && typeof payload === 'object' && 'data' in payload ? (payload as any).data : payload;
+      const payloadDocumentId = typeof data?.documentId === 'string' && data.documentId.length > 0
+        ? data.documentId
+        : document.documentId;
+
       if (data?.kind === 'editor-stream-text' && typeof (data as any).content === 'string') {
         const event = new CustomEvent('editor:stream-text', {
-          detail: { documentId: document.documentId, content: (data as any).content },
+          detail: { documentId: payloadDocumentId, content: (data as any).content },
         });
         window.dispatchEvent(event);
       }
@@ -92,14 +97,14 @@ export function Chat({
       // Artifact streaming bridge: forward markdown artifact deltas to editor
       if (data?.kind === 'artifact' && data?.name === 'markdown' && typeof (data as any).delta === 'string') {
         const artifactEvent = new CustomEvent('editor:stream-artifact', {
-          detail: { documentId: document.documentId, name: 'markdown', delta: (data as any).delta },
+          detail: { documentId: payloadDocumentId, name: 'markdown', delta: (data as any).delta },
         });
         window.dispatchEvent(artifactEvent);
       }
 
       if (data?.kind === 'editor-stream-finish') {
         const finishEvent = new CustomEvent('editor:creation-stream-finished', {
-          detail: { documentId: document.documentId },
+          detail: { documentId: payloadDocumentId },
         });
         window.dispatchEvent(finishEvent);
       }
@@ -249,18 +254,14 @@ export function Chat({
     
     console.log('[Chat] Submitting with Model:', selectedChatModel);
 
-    const contextData: { 
-      activeDocumentId?: string | null;
-      mentionedDocumentIds?: string[]; 
-    } = {};
-    
-    const currentDocId = document.documentId;
-    if (currentDocId && currentDocId !== 'init') {
-      contextData.activeDocumentId = currentDocId;
-    } else {
-      contextData.activeDocumentId = null;
-    }
-    
+    const contextData: ChatContextPayload = {};
+
+    const currentDocId = document.documentId && document.documentId !== 'init'
+      ? document.documentId
+      : null;
+
+    contextData.activeDocumentId = currentDocId;
+
     if (confirmedMentions.length > 0) {
       contextData.mentionedDocumentIds = confirmedMentions.map(doc => doc.id);
     }

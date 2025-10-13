@@ -46,9 +46,9 @@ export function creationStreamingPlugin(targetDocumentId: string) {
       };
 
       const handleStream = (event: CustomEvent) => {
-        const { documentId, content } = event.detail;
+        const { documentId, content } = (event as any).detail || {};
         if (documentId !== targetDocumentId) return;
-        queueMarkdown(content);
+        queueMarkdown(typeof content === 'string' ? content : '');
       };
 
       const handleArtifact = (event: CustomEvent) => {
@@ -57,7 +57,6 @@ export function creationStreamingPlugin(targetDocumentId: string) {
         if (name !== 'markdown') return;
         queueMarkdown(typeof delta === 'string' ? delta : '');
       };
-
       window.addEventListener('editor:stream-text', handleStream as EventListener);
       window.addEventListener('editor:stream-artifact', handleArtifact as EventListener);
       return {

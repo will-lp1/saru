@@ -37,7 +37,7 @@ const EditorSkeleton = () => (
   </div>
 );
 
-type AlwaysVisibleArtifactProps = {
+type DocumentWorkspaceProps = {
   chatId: string;
   initialDocumentId: string;
   initialDocuments: Document[];
@@ -45,14 +45,13 @@ type AlwaysVisibleArtifactProps = {
   user: User;
 };
 
-
-export function AlwaysVisibleArtifact({
+export function DocumentWorkspace({
   chatId,
   initialDocumentId,
   initialDocuments = [],
   showCreateDocumentForId,
   user
-}: AlwaysVisibleArtifactProps) {
+}: DocumentWorkspaceProps) {
   const router = useRouter();
   const [saveState, setSaveState] = useState<SaveStatus>('idle');
   const { document, setDocument } = useDocument();
@@ -223,6 +222,10 @@ export function AlwaysVisibleArtifact({
       return null;
   }, [documents]);
 
+  const latestDocumentId = latestDocument?.id ?? null;
+  const latestDocumentTitle = latestDocument?.title ?? null;
+  const latestDocumentContent = latestDocument?.content ?? null;
+
   useEffect(() => {
     const docs = initialDocuments || [];
     setDocuments(docs);
@@ -233,23 +236,97 @@ export function AlwaysVisibleArtifact({
     const docToUse = docs[initialIndex];
 
     if (docToUse) {
-      setDocument({
-        documentId: docToUse.id,
-        title: docToUse.title,
-        content: docToUse.content ?? '',
-        status: 'idle',
+      setDocument((current) => {
+        if (current.documentId === docToUse.id) {
+          const nextTitle = docToUse.title ?? current.title;
+          if (nextTitle === current.title) {
+            return current;
+          }
+
+          return {
+            ...current,
+            title: nextTitle,
+          };
+        }
+
+        return {
+          documentId: docToUse.id,
+          title: docToUse.title ?? 'Document',
+          content: docToUse.content ?? '',
+          status: 'idle',
+        };
       });
-      setNewTitle(docToUse.title);
+      setNewTitle(docToUse.title ?? 'Document');
     } else if (initialDocumentId === 'init' || showCreateDocumentForId) {
-      setDocument({
-        documentId: 'init',
-        title: 'Document',
-        content: '',
-        status: 'idle',
+      setDocument((current) => {
+        if (current.documentId === 'init') {
+          return current;
+        }
+
+        return {
+          documentId: 'init',
+          title: 'Document',
+          content: '',
+          status: 'idle',
+        };
       });
       setNewTitle('Document');
     }
-  }, []);
+  }, [initialDocuments, initialDocumentId, showCreateDocumentForId, setDocument]);
+
+  useEffect(() => {
+    if (showCreateDocumentForId) {
+      setDocument((current) => {
+        if (current.documentId === 'init') {
+          return current;
+        }
+
+        return {
+          documentId: 'init',
+          title: 'Document',
+          content: '',
+          status: 'idle',
+        };
+      });
+
+      if (!editingTitle) {
+        setNewTitle('Document');
+      }
+      return;
+    }
+
+    if (!latestDocumentId) {
+      return;
+    }
+
+    setDocument((current) => {
+      const shouldUpdateId = current.documentId !== latestDocumentId;
+      const shouldUpdateTitle = (latestDocumentTitle ?? 'Document') !== (current.title ?? '');
+
+      if (!shouldUpdateId && !shouldUpdateTitle) {
+        return current;
+      }
+
+      return {
+        documentId: latestDocumentId,
+        title: latestDocumentTitle ?? current.title ?? 'Document',
+        content: shouldUpdateId ? latestDocumentContent ?? '' : current.content,
+        status: shouldUpdateId ? 'idle' : current.status,
+      };
+    });
+
+    if (!editingTitle && latestDocumentTitle && latestDocumentTitle !== newTitle) {
+      setNewTitle(latestDocumentTitle);
+    }
+  }, [
+    editingTitle,
+    latestDocumentContent,
+    latestDocumentId,
+    latestDocumentTitle,
+    newTitle,
+    setDocument,
+    showCreateDocumentForId,
+  ]);
 
   // Removed automatic navigation to latest document for a smoother, predictable UX. Users now stay on the /documents page unless they explicitly select or create a document.
 

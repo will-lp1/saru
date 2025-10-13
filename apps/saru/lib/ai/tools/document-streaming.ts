@@ -3,12 +3,13 @@ import { z } from 'zod/v3';
 import { Session } from '@/lib/auth';
 import { myProvider } from '@/lib/ai/providers';
 
-interface CreateDocumentProps {
+interface StreamingDocumentProps {
   session: Session;
   dataStream?: UIMessageStreamWriter;
+  documentId?: string;
 }
 
-export const streamingDocument = ({ session, dataStream }: CreateDocumentProps) =>
+export const streamingDocument = ({ session, dataStream, documentId }: StreamingDocumentProps) =>
   tool({
     description: 'Generates content based on a title or prompt for the active document.',
     inputSchema: z.object({
@@ -16,6 +17,7 @@ export const streamingDocument = ({ session, dataStream }: CreateDocumentProps) 
     }),
     execute: async ({ title }) => {
       try {
+        const targetDocumentId = documentId;
         const { fullStream } = streamText({
           model: myProvider.languageModel('artifact-model'),
           system: 'Write valid Markdown. Use headings and emphasis appropriately. No extraneous commentary.',
@@ -26,38 +28,38 @@ export const streamingDocument = ({ session, dataStream }: CreateDocumentProps) 
         let generatedContent = '';
         for await (const delta of fullStream) {
           if (delta.type === 'text-delta') {
-            const textDelta = (delta as any).text as string;
+            const textDelta = (delta).text as string;
             generatedContent += textDelta;
-            // Use data-* events so onData receives them
             dataStream?.write({
               type: 'data-editor-stream-text',
               data: {
                 kind: 'editor-stream-text',
                 content: textDelta,
+                documentId: targetDocumentId,
               },
             });
 
-            // Also emit artifact-compatible event for markdown streaming
             dataStream?.write({
               type: 'data-editor-stream-artifact',
               data: {
                 kind: 'artifact',
                 name: 'markdown',
                 delta: textDelta,
+                documentId: targetDocumentId,
               },
             });
           }
         }
 
-        // Signal finish so the editor can optionally auto-save
         dataStream?.write({
           type: 'data-editor-stream-finish',
-          data: { kind: 'editor-stream-finish' },
+          data: { kind: 'editor-stream-finish', documentId: targetDocumentId },
         });
 
         return {
           title,
           content: generatedContent,
+          documentId: targetDocumentId,
           action: 'document-generated',
           message: 'Content generation completed.',
         };

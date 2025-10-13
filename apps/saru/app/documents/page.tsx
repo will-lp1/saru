@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSession, getUser } from '@/app/(auth)/auth';
-import { AlwaysVisibleArtifact } from '@/components/document/document-workspace';
+import { DocumentWorkspace } from '@/components/document/document-workspace';
 
 export default async function Page() {
   const session = await getSession();
@@ -15,7 +15,7 @@ export default async function Page() {
   }
 
   return (
-    <AlwaysVisibleArtifact 
+    <DocumentWorkspace 
       chatId="new-chat"
       initialDocumentId="init"
       initialDocuments={[]} 

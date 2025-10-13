@@ -51,6 +51,7 @@ interface CreateResult extends BaseResult {
 interface StreamResult extends BaseResult {
   content?: string;
   message?: string;
+  documentId?: string;
 }
 
 interface UpdateResult extends BaseResult {

@@ -35,6 +35,7 @@ import { headers } from 'next/headers';
 import type { Document } from '@saru/db';
 import { createDocument } from '@/lib/ai/tools/create-document';
 import { webSearch } from '@/lib/ai/tools/web-search';
+import type { ActiveDocumentId, ChatContextPayload, ChatAiOptions } from '@/types/chat';
 
 export const maxDuration = 60;
 
@@ -48,7 +49,7 @@ async function createEnhancedSystemPrompt({
   availableTools = ['createDocument','streamingDocument','updateDocument','webSearch'] as Array<'createDocument'|'streamingDocument'|'updateDocument'|'webSearch'>,
 }: {
   selectedChatModel: string;
-  activeDocumentId?: string | null;
+  activeDocumentId?: ActiveDocumentId;
   mentionedDocumentIds?: string[] | null;
   customInstructions?: string | null;
   writingStyleSummary?: string | null;
@@ -167,32 +168,27 @@ export async function POST(request: Request) {
     
     const userId = session.user.id;
 
-    const {
-      id: requestId,
-      chatId: chatId,
-      messages,
-      selectedChatModel,
-      data: requestData,
-      aiOptions,
-    }: {
+    type ChatRequestData = ChatContextPayload & Record<string, unknown>;
+
+    interface ChatRequestBody {
       id: string;
       chatId: string;
       messages: Array<UIMessage>;
       selectedChatModel: string;
-      data?: { 
-        activeDocumentId?: string | null;
-        mentionedDocumentIds?: string[] | null;
-        [key: string]: any; 
-      };
-      aiOptions?: {
-        customInstructions?: string | null;
-        suggestionLength?: 'short' | 'medium' | 'long';
-        writingStyleSummary?: string | null;
-        applyStyle?: boolean;
-      } | null;
-    } = await request.json();
+      data?: ChatRequestData;
+      aiOptions?: ChatAiOptions | null;
+    }
 
-    const activeDocumentId = requestData?.activeDocumentId ?? undefined;
+    const {
+      id: requestId,
+      chatId,
+      messages,
+      selectedChatModel,
+      data: requestData,
+      aiOptions,
+    }: ChatRequestBody = await request.json();
+
+    const activeDocumentId: ActiveDocumentId = requestData?.activeDocumentId ?? null;
     const mentionedDocumentIds = requestData?.mentionedDocumentIds ?? undefined;
     const customInstructions = aiOptions?.customInstructions ?? null;
     const suggestionLength = aiOptions?.suggestionLength ?? 'medium';
@@ -256,7 +252,7 @@ export async function POST(request: Request) {
     }
 
 
-    let validatedActiveDocumentId: string | undefined;
+    let validatedActiveDocumentId: string | null = null;
     let activeDoc: Document | null = null;
     if (activeDocumentId && uuidRegex.test(activeDocumentId)) {
         try {
@@ -278,7 +274,10 @@ export async function POST(request: Request) {
       availableTools.streamingDocument = streamingDocument({ session: toolSession });
       activeToolsList.push('createDocument', 'streamingDocument');
     } else if ((activeDoc?.content?.length ?? 0) === 0) {
-      availableTools.streamingDocument = streamingDocument({ session: toolSession });
+      availableTools.streamingDocument = streamingDocument({
+        session: toolSession,
+        documentId: validatedActiveDocumentId,
+      });
       activeToolsList.push('streamingDocument');
     } else {
       availableTools.updateDocument = updateDocument({ session: toolSession, documentId: validatedActiveDocumentId });
@@ -305,7 +304,11 @@ export async function POST(request: Request) {
         // Rebuild tools with dataStream for streaming tool events
         const toolsWithStream: any = { ...availableTools };
         if (toolsWithStream.streamingDocument) {
-          toolsWithStream.streamingDocument = streamingDocument({ session: toolSession, dataStream });
+          toolsWithStream.streamingDocument = streamingDocument({
+            session: toolSession,
+            dataStream,
+            documentId: validatedActiveDocumentId ?? undefined,
+          });
         }
 
         const result = streamText({
