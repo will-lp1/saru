@@ -20,7 +20,8 @@ export const streamingDocument = ({ session, dataStream, documentId }: Streaming
         const targetDocumentId = documentId;
         const { fullStream } = streamText({
           model: myProvider.languageModel('artifact-model'),
-          system: 'Write valid Markdown. Use headings and emphasis appropriately. No extraneous commentary.',
+          system:
+            'Respond in clean Markdown using standard paragraphs. Do not insert manual line breaks inside sentences; wrap only with double newlines when you truly need a new paragraph. Avoid lists, tables, or code fences unless the user asks. Include headings only when the user explicitly requests them or the prompt clearly calls for a titled section.',
           prompt: title,
           temperature: 0.4,
         });
@@ -35,16 +36,6 @@ export const streamingDocument = ({ session, dataStream, documentId }: Streaming
               data: {
                 kind: 'editor-stream-text',
                 content: textDelta,
-                documentId: targetDocumentId,
-              },
-            });
-
-            dataStream?.write({
-              type: 'data-editor-stream-artifact',
-              data: {
-                kind: 'artifact',
-                name: 'markdown',
-                delta: textDelta,
                 documentId: targetDocumentId,
               },
             });

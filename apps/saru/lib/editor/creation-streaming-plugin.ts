@@ -1,5 +1,5 @@
-import { Plugin, PluginKey } from 'prosemirror-state';
-import { buildDocumentFromContent } from './functions';
+import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
+import { buildContentFromDocument, buildDocumentFromContent } from './functions';
 
 export const creationStreamingKey = new PluginKey('creationStreaming');
 
@@ -15,22 +15,33 @@ export function creationStreamingPlugin(targetDocumentId: string) {
     key: creationStreamingKey,
     view(editorView) {
       let pendingMarkdown = '';
+      let accumulatedMarkdown = buildContentFromDocument(editorView.state.doc) ?? '';
       let rafId: number | null = null;
 
       const flush = () => {
         rafId = null;
         const chunk = pendingMarkdown;
-        pendingMarkdown = '';
         if (!chunk) return;
+        pendingMarkdown = '';
+
+        const nextMarkdown = accumulatedMarkdown + chunk;
         try {
-          const docNode = buildDocumentFromContent(chunk);
+          const docNode = buildDocumentFromContent(nextMarkdown);
           const fragment = docNode.content;
           const { state, dispatch } = editorView;
-          const endPos = state.doc.content.size;
-          const tr = state.tr.insert(endPos, fragment);
+          const tr = state.tr
+            .replaceWith(0, state.doc.content.size, fragment)
+            .setMeta('external', true)
+            .setMeta('addToHistory', false);
+
+          const endPos = tr.doc.content.size;
+          tr.setSelection(TextSelection.create(tr.doc, endPos));
           dispatch(tr);
+          accumulatedMarkdown = nextMarkdown;
         } catch (err) {
           console.error('[CreationStreamingPlugin] Failed to flush stream fragment:', err);
+          pendingMarkdown = chunk + pendingMarkdown;
+          scheduleFlush();
         }
       };
 

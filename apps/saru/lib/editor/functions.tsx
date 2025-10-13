@@ -30,6 +30,14 @@ const parser = new MarkdownParser(documentSchema, md, {
   link: { mark: "link", getAttrs: (tok) => ({ href: tok.attrGet("href"), title: tok.attrGet("title") }) },
   code_inline: { mark: "code" },
   s: { mark: "strike" },
+  image: {
+    node: "image",
+    getAttrs: (tok) => ({
+      src: tok.attrGet("src") ?? "",
+      title: tok.attrGet("title") ?? null,
+      alt: tok.content ?? tok.attrGet("alt") ?? "",
+    }),
+  },
 });
 
 // ---------- Serializer ----------
