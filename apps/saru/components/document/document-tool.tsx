@@ -5,11 +5,75 @@ import { FileIcon, LoaderIcon, MessageIcon, PencilEditIcon, CheckIcon, CheckCirc
 import { toast } from 'sonner';
 import { useDocument } from '@/hooks/use-document';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 const DiffView = dynamic(() => import('./diffview').then(m => m.DiffView), {
   ssr: false,
   loading: () => <div className="p-3 text-xs text-muted-foreground">Loading diff…</div>,
 });
+
+const toolAnimationStyles = `
+  @keyframes slideInUp {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fadeInScale {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .tool-enter {
+    animation: slideInUp 0.25s cubic-bezier(.215, .61, .355, 1);
+  }
+
+  .status-enter {
+    animation: fadeInScale 0.2s cubic-bezier(.215, .61, .355, 1);
+  }
+
+  .state-transition {
+    transition: all 0.2s cubic-bezier(.645, .045, .355, 1);
+  }
+
+  .fade-out {
+    opacity: 0;
+    transform: scale(0.98);
+    pointer-events: none;
+  }
+
+  .fade-in {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tool-enter,
+    .status-enter,
+    .state-transition {
+      animation: none;
+      transition: none;
+    }
+  }
+`;
+
+// Inject styles
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = toolAnimationStyles;
+  document.head.appendChild(style);
+}
 
 const getActionText = (
   type: 'create' | 'stream' | 'update',
@@ -125,9 +189,9 @@ function PureDocumentToolResult({
 
   if (result.error) {
      return (
-        <div className="bg-background border border-destructive/50 rounded-xl w-full max-w-md flex flex-row items-center text-sm overflow-hidden p-3 gap-3">
+        <div className={cn("bg-background border border-destructive/50 rounded-xl w-full max-w-md flex flex-row items-center text-sm overflow-hidden p-3 gap-3", "tool-enter")}>
           <div className="text-destructive flex-shrink-0">
-            <MessageIcon size={16} /> 
+            <MessageIcon size={16} />
           </div>
           <div className="flex-grow">
             <div className="text-destructive font-medium">
@@ -143,7 +207,7 @@ function PureDocumentToolResult({
 
   if (isUpdateProposal) {
     return (
-      <div className="bg-background border rounded-xl w-full max-w-md flex flex-col items-start text-sm overflow-hidden">
+      <div className={cn("bg-background border rounded-xl w-full max-w-md flex flex-col items-start text-sm overflow-hidden", "tool-enter")}>
         <div className="p-3 flex flex-row gap-3 items-start w-full border-b bg-muted/30">
           <div className="text-muted-foreground mt-0.5 flex-shrink-0">
             <PencilEditIcon size={16}/>
@@ -156,13 +220,13 @@ function PureDocumentToolResult({
 
         {!isApplied && !isRejected ? (
           <>
-        <div className="p-3 w-full max-h-60 overflow-y-auto text-xs">
-          <DiffView 
-            oldContent={result.originalContent ?? ''} 
-            newContent={result.newContent ?? ''} 
+        <div className={cn("p-3 w-full max-h-60 overflow-y-auto text-xs", "state-transition", isApplied || isRejected ? "fade-out" : "fade-in")}>
+          <DiffView
+            oldContent={result.originalContent ?? ''}
+            newContent={result.newContent ?? ''}
           />
         </div>
-            <div className="p-2 border-t w-full flex justify-end bg-muted/30 gap-2">
+            <div className={cn("p-2 border-t w-full flex justify-end bg-muted/30 gap-2", "state-transition", isApplied || isRejected ? "fade-out" : "fade-in")}>
           <Button
             size="sm"
             variant="destructive"
@@ -185,17 +249,19 @@ function PureDocumentToolResult({
         </div>
           </>
         ) : (
-          isApplied ? (
-            <div className="flex items-center gap-2 p-3 w-full bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300">
-              <CheckCircleFillIcon size={16} />
-              <span className="text-sm">Update applied to document.</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 p-3 w-full bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300">
-              <CrossIcon size={16} />
-              <span className="text-sm">Update proposal rejected.</span>
-            </div>
-          )
+          <div className={cn("state-transition status-enter w-full", isApplied || isRejected ? "fade-in" : "fade-out")}>
+            {isApplied ? (
+              <div className="flex items-center gap-2 p-3 w-full bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                <CheckCircleFillIcon size={16} />
+                <span className="text-sm">Update applied to document.</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 p-3 w-full bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                <CrossIcon size={16} />
+                <span className="text-sm">Update proposal rejected.</span>
+              </div>
+            )}
+          </div>
         )}
       </div>
     );
@@ -211,7 +277,7 @@ function PureDocumentToolResult({
   const SuccessIcon = CheckCircleFillIcon;
 
   return (
-    <div className="bg-background border rounded-xl w-full max-w-md text-sm overflow-hidden">
+    <div className={cn("bg-background border rounded-xl w-full max-w-md text-sm overflow-hidden", "tool-enter")}>
       <div className="p-3 flex flex-row items-center gap-3">
          <div className="text-green-600 flex-shrink-0">
            <SuccessIcon size={16}/>
@@ -262,7 +328,7 @@ function PureDocumentToolCall({
 
   return (
     <div
-      className="bg-background border rounded-xl w-full max-w-md flex flex-row items-center justify-between gap-3 text-sm overflow-hidden"
+      className={cn("bg-background border rounded-xl w-full max-w-md flex flex-row items-center justify-between gap-3 text-sm overflow-hidden", "tool-enter")}
     >
       <div className="p-3 flex flex-row gap-3 items-center w-full bg-muted/30">
         <div className="text-muted-foreground flex-shrink-0">
