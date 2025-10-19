@@ -213,7 +213,7 @@ export async function POST(request: Request) {
         userId: userId,
         title,
         document_context: {
-          active: activeDocumentId ?? undefined,
+          active: activeDocumentId || undefined,
           mentioned: mentionedDocumentIds
         }
       });
@@ -226,7 +226,7 @@ export async function POST(request: Request) {
         chatId, 
         userId,
         context: {
-          active: activeDocumentId ?? undefined,
+          active: activeDocumentId || undefined,
           mentioned: mentionedDocumentIds
         }
       });
@@ -343,7 +343,7 @@ export async function POST(request: Request) {
               chatId,
               userId,
               context: {
-                active: activeDocumentId ?? undefined,
+                active: activeDocumentId || undefined,
                 mentioned: mentionedDocumentIds,
               },
             });
