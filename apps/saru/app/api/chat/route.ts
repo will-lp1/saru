@@ -214,7 +214,7 @@ export async function POST(request: Request) {
         userId: userId,
         title,
         document_context: {
-          active: activeDocumentId,
+          active: activeDocumentId ?? undefined,
           mentioned: mentionedDocumentIds
         }
       });
@@ -227,7 +227,7 @@ export async function POST(request: Request) {
         chatId, 
         userId,
         context: {
-          active: activeDocumentId,
+          active: activeDocumentId ?? undefined,
           mentioned: mentionedDocumentIds
         }
       });
@@ -309,7 +309,6 @@ export async function POST(request: Request) {
 
     const stream = createUIMessageStream({
       execute: ({ writer: dataStream }) => {
-        // Rebuild tools with dataStream for streaming tool events
         const toolsWithStream: any = { ...availableTools };
         if (toolsWithStream.streamingDocument) {
           toolsWithStream.streamingDocument = streamingDocument({
@@ -345,7 +344,7 @@ export async function POST(request: Request) {
               chatId,
               userId,
               context: {
-                active: activeDocumentId,
+                active: activeDocumentId ?? undefined,
                 mentioned: mentionedDocumentIds,
               },
             });
