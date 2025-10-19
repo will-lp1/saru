@@ -295,21 +295,20 @@ export function Chat({
       />
 
       <div className="flex-1 overflow-y-auto relative">
-        {isLoadingChat ? (
-           <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm z-10">
-             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-           </div>
-         ) : (
-          <Messages
-            chatId={chatId}
-            status={status}
-            messages={messages}
-            setMessages={setMessages}
-            regenerate={regenerate} // Updated from reload to regenerate
-            isReadonly={isReadonly}
-            isArtifactVisible={false}
-          />
-         )}
+        <Messages
+          chatId={chatId}
+          status={status}
+          messages={messages}
+          setMessages={setMessages}
+          regenerate={regenerate} 
+          isReadonly={isReadonly}
+          isArtifactVisible={false}
+        />
+        {isLoadingChat && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm z-10">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        )}
       </div>
 
       {!isReadonly && (

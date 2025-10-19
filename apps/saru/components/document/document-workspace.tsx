@@ -618,6 +618,29 @@ export function DocumentWorkspace({
     );
   }
 
+  if (initialDocumentId === 'init' && versionsLoading) {
+    return (
+      <div className="flex flex-col h-dvh bg-background">
+        <div className="flex justify-between items-center border-b px-3 h-[45px]">
+          <SidebarTrigger />
+        </div>
+
+        <div className="flex flex-col items-center justify-center h-full gap-8 px-4 text-muted-foreground">
+          <Card className="w-44 h-32 sm:w-52 sm:h-36 md:w-56 md:h-40 border border-border shadow-sm overflow-hidden bg-background">
+            <div className="h-5 bg-muted flex items-center px-2 text-[9px] text-muted-foreground/80 font-mono gap-1">
+              <Skeleton className="h-2.5 w-3/5" />
+            </div>
+            <div className="p-3 space-y-1">
+              <Skeleton className="h-2.5 w-2/3" />
+              <Skeleton className="h-2.5 w-full" />
+              <Skeleton className="h-2.5 w-5/6" />
+            </div>
+          </Card>
+          </div>
+        </div>
+    );
+  }
+
   if (
     initialDocumentId === 'init' &&
     !versionsLoading &&
@@ -631,7 +654,7 @@ export function DocumentWorkspace({
         </div>
 
         <div className="flex flex-col items-center justify-center h-full gap-8 px-4 text-muted-foreground">
-          <Card className="w-44 h-32 sm:w-52 sm:h-36 md:w-56 md:h-40 border border-border shadow-sm overflow-hidden bg-background">
+          <Card className="w-44 h-32 sm:w-52 sm:h-36 md:w-56 md:h-40 border border-border shadow-sm overflow-hidden bg-background animate-in slide-in-from-bottom-4 fade-in-0 duration-200">
             <div className="h-5 bg-muted flex items-center px-2 text-[9px] text-muted-foreground/80 font-mono gap-1">
               <Skeleton className="h-2.5 w-3/5" />
             </div>

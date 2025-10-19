@@ -25,17 +25,17 @@ export function ResizablePanel({
 }: ResizablePanelProps) {
   const [size, setSize] = useState(defaultSize);
   const [isResizing, setIsResizing] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   const { open: isOpen } = useSidebarWithSide(side);
 
-  // Handle mouse down on resize handle
-  const startResizing = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-  };
-
-  // Save size to localStorage
   useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+
     try {
       const savedSize = localStorage.getItem(`resizable-panel-size-${side}`);
       if (savedSize) {
@@ -47,7 +47,12 @@ export function ResizablePanel({
     } catch (error) {
       console.error('Failed to load size from localStorage:', error);
     }
-  }, [minSize, maxSize, side]);
+  }, [isHydrated, minSize, maxSize, side]);
+
+  const startResizing = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
 
   // Handle mouse move for resizing
   useEffect(() => {
@@ -135,7 +140,7 @@ export function ResizablePanel({
       {side === 'right' && (
         <>
           <div
-            className="relative h-full bg-transparent transition-all duration-200 ease-linear"
+            className={cn("relative h-full bg-transparent transition-all duration-200 ease-linear")}
             style={{ width: isOpen ? `${size}px` : '0px' }}
           />
           <div
