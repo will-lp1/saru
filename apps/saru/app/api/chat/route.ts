@@ -33,7 +33,6 @@ import { myProvider } from '@/lib/ai/providers';
 import { auth } from "@/lib/auth";
 import { headers } from 'next/headers';
 import type { Document } from '@saru/db';
-import { createDocument } from '@/lib/ai/tools/create-document';
 import { webSearch } from '@/lib/ai/tools/web-search';
 import type { ActiveDocumentId, ChatContextPayload, ChatAiOptions } from '@/types/chat';
 
@@ -46,7 +45,7 @@ async function createEnhancedSystemPrompt({
   customInstructions,
   writingStyleSummary,
   applyStyle,
-  availableTools = ['createDocument','streamingDocument','updateDocument','webSearch'] as Array<'createDocument'|'streamingDocument'|'updateDocument'|'webSearch'>,
+  availableTools = ['streamingDocument','updateDocument','webSearch'] as Array<'streamingDocument'|'updateDocument'|'webSearch'>,
 }: {
   selectedChatModel: string;
   activeDocumentId?: ActiveDocumentId;
@@ -54,7 +53,7 @@ async function createEnhancedSystemPrompt({
   customInstructions?: string | null;
   writingStyleSummary?: string | null;
   applyStyle?: boolean;
-  availableTools?: Array<'createDocument'|'streamingDocument'|'updateDocument'|'webSearch'>;
+  availableTools?: Array<'streamingDocument'|'updateDocument'|'webSearch'>;
 }) {
 
   let basePrompt = systemPrompt({ selectedChatModel, availableTools });
@@ -267,15 +266,15 @@ export async function POST(request: Request) {
 
     // Set up tools based on document state
     const availableTools: any = {};
-    const activeToolsList: Array<'createDocument' | 'streamingDocument' | 'updateDocument' | 'webSearch'> = [];
+    const activeToolsList: Array<'streamingDocument' | 'updateDocument' | 'webSearch'> = [];
 
     const activeDocumentContent = activeDoc?.content ?? '';
     const isActiveDocumentEmpty = activeDocumentContent.trim().length === 0;
 
     if (!validatedActiveDocumentId) {
-      availableTools.createDocument = createDocument({ session: toolSession });
+      // No active document - only allow streaming document for new content generation
       availableTools.streamingDocument = streamingDocument({ session: toolSession });
-      activeToolsList.push('createDocument', 'streamingDocument');
+      activeToolsList.push('streamingDocument');
     } else {
       availableTools.updateDocument = updateDocument({
         session: toolSession,
