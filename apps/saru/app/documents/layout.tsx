@@ -8,7 +8,7 @@ import { headers } from 'next/headers';
 import { auth } from '@/lib/auth';
 import { getCurrentDocumentsByUserId } from '@/lib/db/queries';
 
-export const dynamic = 'force-dynamic';
+export const experimental_ppr = true;
 
 export default async function DocumentsLayout({ children }: { children: ReactNode }) {
   const readonlyHeaders = await headers();
