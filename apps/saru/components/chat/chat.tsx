@@ -1,9 +1,9 @@
 'use client';
 
-import type { UIMessage, ChatRequestOptions } from 'ai';
+import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { ChatHeader } from '@/components/chat/chat-header';
@@ -15,10 +15,9 @@ import { FileText } from 'lucide-react';
 import { MentionedDocument } from './multimodal-input';
 import { useDocument } from '@/hooks/use-document';
 import { DEFAULT_CHAT_MODEL } from '@/lib/ai/models';
-import { Loader2 } from 'lucide-react';
 import { useAiOptionsValue } from '@/hooks/ai-options';
 import { mutate as globalMutate } from 'swr';
-import type { ChatContextPayload } from '@/types/chat';
+import type { ChatContextPayload, ChatAiOptions } from '@/types/chat';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const SkeletonMessage = ({ role }: { role: 'user' | 'assistant' }) => (
@@ -87,7 +86,6 @@ export function Chat({
   // Callback function to update the model state
   const handleModelChange = (newModelId: string) => {
     setSelectedChatModel(newModelId);
-    console.log('[Chat] Model changed to:', newModelId);
   };
 
   const [confirmedMentions, setConfirmedMentions] = useState<MentionedDocument[]>([]);
@@ -95,15 +93,7 @@ export function Chat({
   useEffect(() => {
     const hasDocumentContext = document.documentId !== 'init';
     setDocumentContextActive(Boolean(hasDocumentContext));
-    
-    if (hasDocumentContext) {
-      console.log('[Chat] Using document context in chat:', {
-        documentId: document.documentId,
-        title: document.title,
-        contentLength: document.content.length
-      });
-    }
-  }, [document.documentId, document.content, document.title]);
+  }, [document.documentId]);
 
   const {
     messages,
@@ -116,26 +106,6 @@ export function Chat({
     id: chatId,
     transport: new DefaultChatTransport({
       api: '/api/chat',
-      prepareSendMessagesRequest(request) {
-        return {
-          body: {
-            id: request.id,
-            chatId: chatId,
-            messages: request.messages,
-            selectedChatModel: selectedChatModel,
-            data: {
-              activeDocumentId: document.documentId,
-              mentionedDocumentIds: [],
-            },
-            aiOptions: {
-              customInstructions: null,
-              suggestionLength: 'medium',
-              writingStyleSummary: writingStyleSummary,
-              applyStyle: applyStyle,
-            },
-          },
-        };
-      },
     }),
     messages: initialMessages,
     generateId: generateUUID,
@@ -201,43 +171,32 @@ export function Chat({
 
   useEffect(() => {
     const loadHistory = async (idToLoad: string) => {
-
-      console.log(`[Chat useEffect] Starting load for explicitly requested chatId: ${idToLoad}`);
       setIsLoadingChat(true);
-      console.time(`[Chat useEffect] Load ${idToLoad}`);
 
       try {
         setRequestedChatLoadId(null);
 
-        console.time(`[Chat useEffect] Fetch ${idToLoad}`);
         const chatResponse = await fetch(`/api/chat?id=${idToLoad}`);
-        console.timeEnd(`[Chat useEffect] Fetch ${idToLoad}`);
 
         if (!chatResponse.ok) {
           const errorText = await chatResponse.text();
-          console.error(`[Chat useEffect] Fetch failed for ${idToLoad}. Status: ${chatResponse.status}. Body: ${errorText}`);
           throw new Error(`Failed to fetch chat: ${chatResponse.statusText}`);
         }
 
         const chatData = await chatResponse.json();
         if (!chatData || !chatData.messages) {
-          console.error(`[Chat useEffect] Invalid chat data received for ${idToLoad}. Data:`, chatData);
           throw new Error('Invalid chat data received');
         }
 
         setInput('');
         setMessages(chatData.messages);
 
-        console.log(`[Chat useEffect] Successfully loaded chat ${idToLoad}`);
-
       } catch (error) {
-        console.error(`[Chat useEffect] CATCH BLOCK - Error loading chat ${idToLoad}:`, error);
         toast.error(`Failed to load chat history for ${idToLoad}`);
         setMessages(initialMessages);
         setInput('');
       } finally {
         setIsLoadingChat(false);
-        console.timeEnd(`[Chat useEffect] Load ${idToLoad}`);
       }
     };
 
@@ -251,8 +210,6 @@ export function Chat({
     const handleLoadChatEvent = (event: CustomEvent<{ chatId: string }>) => {
       const detail = event.detail;
       if (!detail || !detail.chatId) return;
-
-      console.log(`[Chat EventListener] Received load-chat event for ${detail.chatId}. Current state chatId: ${chatId}. Setting new chatId.`);
 
       if (detail.chatId !== chatId) {
           setChatId(detail.chatId);
@@ -271,9 +228,8 @@ export function Chat({
   useEffect(() => {
     const handleChatIdChanged = (event: CustomEvent<{ oldChatId: string, newChatId: string }>) => {
       const { oldChatId, newChatId } = event.detail;
-      
+
       if (oldChatId === chatId) {
-        console.log(`[Chat] Changing chat ID from ${oldChatId} to ${newChatId}`);
       }
     };
     
@@ -286,7 +242,6 @@ export function Chat({
 
   useEffect(() => {
     const handleReset = () => {
-      console.log('[Chat Component] Received reset-chat-state event');
       const newChatId = generateUUID();
       setMessages([]);
       setInput('');
@@ -300,6 +255,63 @@ export function Chat({
     };
   }, [setMessages, setInput, setChatId]);
 
+  const buildRequestBody = useCallback(
+    (body?: Record<string, unknown>) => {
+      const activeDocumentId =
+        document.documentId && document.documentId !== 'init'
+          ? document.documentId
+          : null;
+
+      const incoming = body ?? {};
+      const incomingData =
+        typeof incoming.data === 'object' && incoming.data !== null
+          ? (incoming.data as ChatContextPayload)
+          : {};
+      const incomingAiOptions =
+        typeof incoming.aiOptions === 'object' && incoming.aiOptions !== null
+          ? (incoming.aiOptions as ChatAiOptions)
+          : {};
+
+      const mergedData: ChatContextPayload = {
+        ...incomingData,
+        activeDocumentId:
+          incomingData.activeDocumentId !== undefined
+            ? incomingData.activeDocumentId
+            : activeDocumentId,
+      };
+
+      const mergedAiOptions: ChatAiOptions = {
+        writingStyleSummary,
+        applyStyle,
+        ...incomingAiOptions,
+      };
+
+      return {
+        ...incoming,
+        chatId,
+        selectedChatModel,
+        data: mergedData,
+        aiOptions: mergedAiOptions,
+      };
+    },
+    [chatId, selectedChatModel, document.documentId, writingStyleSummary, applyStyle],
+  );
+
+  const regenerateWithContext = useCallback(
+    (options?: Parameters<typeof regenerate>[0]) => {
+      const existingBody =
+        options && typeof options.body === 'object' && options.body !== null
+          ? (options.body as Record<string, unknown>)
+          : undefined;
+
+      regenerate({
+        ...options,
+        body: buildRequestBody(existingBody),
+      });
+    },
+    [regenerate, buildRequestBody],
+  );
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
@@ -310,31 +322,26 @@ export function Chat({
         id: `doc-context-${document.documentId}`
       });
     }
-    
-    console.log('[Chat] Submitting with Model:', selectedChatModel);
 
-    const contextData: ChatContextPayload = {};
-
-    const currentDocId = document.documentId && document.documentId !== 'init'
-      ? document.documentId
-      : null;
-
-    contextData.activeDocumentId = currentDocId;
+    const contextData: ChatContextPayload = {
+      activeDocumentId:
+        document.documentId && document.documentId !== 'init'
+          ? document.documentId
+          : null,
+    };
 
     if (confirmedMentions.length > 0) {
       contextData.mentionedDocumentIds = confirmedMentions.map(doc => doc.id);
     }
+
+    const requestBody = buildRequestBody({
+      data: contextData,
+    });
     
-    // Send message with v5 API
     sendMessage(
     { parts: [{ type: 'text', text: input }] },
     {
-      body: {
-        chatId: chatId,
-        selectedChatModel: selectedChatModel,
-        aiOptions: { writingStyleSummary, applyStyle },
-        data: contextData,
-      },
+      body: requestBody,
     }
   );
 
@@ -382,7 +389,7 @@ export function Chat({
                 status={status}
                 messages={messages}
                 setMessages={setMessages}
-                regenerate={regenerate}
+                regenerate={regenerateWithContext}
                 isReadonly={isReadonly}
                 isArtifactVisible={false}
               />
