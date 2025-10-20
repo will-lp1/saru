@@ -1,8 +1,7 @@
 import { UIMessage } from 'ai';
 import { PreviewMessage, ThinkingMessage } from './message';
-import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
 import { Overview } from './overview';
-import { Dispatch, memo, SetStateAction } from 'react';
+import { Dispatch, memo, RefObject, SetStateAction, useEffect } from 'react';
 import { UseChatHelpers } from '@ai-sdk/react';
 
 interface MessagesProps {
@@ -13,6 +12,7 @@ interface MessagesProps {
   regenerate: UseChatHelpers<UIMessage>['regenerate'];
   isReadonly: boolean;
   isArtifactVisible: boolean;
+  messagesEndRef: RefObject<HTMLDivElement>;
 }
 
 function PureMessages({
@@ -22,14 +22,42 @@ function PureMessages({
   setMessages,
   regenerate,
   isReadonly,
+  messagesEndRef,
 }: MessagesProps) {
-  const [messagesContainerRef, messagesEndRef] =
-    useScrollToBottom<HTMLDivElement>();
+  useEffect(() => {
+    const handleToolResult = (event: CustomEvent) => {
+      const { toolCallId, result: updatedResult } = event.detail;
+
+      setMessages(prevMessages =>
+        prevMessages.map(message => {
+          if (message.role === 'assistant' && message.parts) {
+            const updatedParts = message.parts.map(part => {
+              if (part.type?.startsWith('tool-') && 'toolCallId' in part && part.toolCallId === toolCallId) {
+                return {
+                  ...part,
+                  output: updatedResult,
+                };
+              }
+              return part;
+            });
+
+            return {
+              ...message,
+              parts: updatedParts,
+            };
+          }
+          return message;
+        })
+      );
+    };
+
+    window.addEventListener('tool-result', handleToolResult as EventListener);
+    return () => window.removeEventListener('tool-result', handleToolResult as EventListener);
+  }, [setMessages]);
 
   return (
     <div
-      ref={messagesContainerRef}
-      className="flex flex-col min-w-0 gap-6 flex-1 overflow-y-scroll pt-4"
+      className="flex flex-col min-w-0 gap-6 pt-4"
     >
       {messages.length === 0 && <Overview />}
 
