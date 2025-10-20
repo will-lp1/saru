@@ -4,6 +4,8 @@ import type { UIMessage, ChatRequestOptions } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { generateUUID } from '@/lib/utils';
 import { MultimodalInput } from './multimodal-input';
@@ -17,6 +19,43 @@ import { Loader2 } from 'lucide-react';
 import { useAiOptionsValue } from '@/hooks/ai-options';
 import { mutate as globalMutate } from 'swr';
 import type { ChatContextPayload } from '@/types/chat';
+import { Skeleton } from '@/components/ui/skeleton';
+
+const SkeletonMessage = ({ role }: { role: 'user' | 'assistant' }) => (
+  <motion.div
+    className="w-full mx-auto max-w-3xl px-4 group/message"
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0, y: -10 }}
+    transition={{ duration: 0.2 }}
+    data-role={role}
+  >
+    <div
+      className={cn(
+        "flex gap-4 group-data-[role=user]/message:px-3 w-full group-data-[role=user]/message:w-fit group-data-[role=user]/message:ml-auto group-data-[role=user]/message:max-w-2xl group-data-[role=user]/message:py-2 rounded-xl",
+        {
+          "group-data-[role=user]/message:bg-muted": true,
+        }
+      )}
+    >
+      <div className="size-8 flex items-center justify-center rounded-full ring-1 shrink-0 ring-border overflow-hidden relative">
+        {role === 'assistant' ? (
+          <Skeleton className="size-8 rounded-full" />
+        ) : (
+          <Skeleton className="size-8 rounded-full" />
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 w-full">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+          {role === 'assistant' && <Skeleton className="h-4 w-2/3" />}
+        </div>
+      </div>
+    </div>
+  </motion.div>
+);
 
 export interface ChatProps {
   id?: string;
@@ -74,12 +113,32 @@ export function Chat({
     stop,
     regenerate,
   } = useChat({
-  id: chatId,
-  transport: new DefaultChatTransport({
-    api: '/api/chat',
-  }),
-  messages: initialMessages,
-  // Forward custom data events from the UI stream to the editor plugin
+    id: chatId,
+    transport: new DefaultChatTransport({
+      api: '/api/chat',
+      prepareSendMessagesRequest(request) {
+        return {
+          body: {
+            id: request.id,
+            chatId: chatId,
+            messages: request.messages,
+            selectedChatModel: selectedChatModel,
+            data: {
+              activeDocumentId: document.documentId,
+              mentionedDocumentIds: [],
+            },
+            aiOptions: {
+              customInstructions: null,
+              suggestionLength: 'medium',
+              writingStyleSummary: writingStyleSummary,
+              applyStyle: applyStyle,
+            },
+          },
+        };
+      },
+    }),
+    messages: initialMessages,
+    generateId: generateUUID,
   onData: (payload: any) => {
     try {
       const data = payload && typeof payload === 'object' && 'data' in payload ? (payload as any).data : payload;
@@ -295,20 +354,41 @@ export function Chat({
       />
 
       <div className="flex-1 overflow-y-auto relative">
-        <Messages
-          chatId={chatId}
-          status={status}
-          messages={messages}
-          setMessages={setMessages}
-          regenerate={regenerate} 
-          isReadonly={isReadonly}
-          isArtifactVisible={false}
-        />
-        {isLoadingChat && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm z-10">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        )}
+        <AnimatePresence mode="wait">
+          {isLoadingChat ? (
+            <motion.div
+              key="loading"
+              className="flex flex-col min-w-0 gap-6 flex-1 overflow-y-scroll pt-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              {/* Show skeleton messages to indicate loading */}
+              <SkeletonMessage role="user" />
+              <SkeletonMessage role="assistant" />
+              <SkeletonMessage role="user" />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="messages"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Messages
+                chatId={chatId}
+                status={status}
+                messages={messages}
+                setMessages={setMessages}
+                regenerate={regenerate}
+                isReadonly={isReadonly}
+                isArtifactVisible={false}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {!isReadonly && (

@@ -37,12 +37,21 @@ export async function generateTitleFromUserMessage({
 }
 
 export async function deleteTrailingMessages({ id }: { id: string }) {
-  const message = await getMessageById({ id });
+  try {
+    const message = await getMessageById({ id });
 
-  if (message) {
-    await deleteMessagesByChatIdAfterTimestamp({
-      chatId: message.chatId,
-      timestamp: message.createdAt,
-    });
+    if (message) {
+      await deleteMessagesByChatIdAfterTimestamp({
+        chatId: message.chatId,
+        timestamp: message.createdAt,
+      });
+    } else {
+      console.warn(
+        '[Chat Actions] deleteTrailingMessages: message not found, skipping delete',
+        { id }
+      );
+    }
+  } catch (error) {
+    console.warn('Failed to delete trailing messages by ID, skipping:', error);
   }
-} 
+}

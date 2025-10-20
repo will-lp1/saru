@@ -15,6 +15,7 @@ import {
   saveMessages,
   getDocumentById,
   getMessagesByChatId,
+  getMessageById,
   updateChatContextQuery,
 } from '@/lib/db/queries';
 import {
@@ -230,17 +231,18 @@ export async function POST(request: Request) {
       });
     }
 
-    const userMessageBackendId = generateUUID();
-
-    await saveMessages({
-      messages: [{
-        id: userMessageBackendId,
-        chatId: chatId,
-        role: userMessage.role,
-        content: { parts: userMessage.parts },
-        createdAt: new Date().toISOString(),
-      }],
-    });
+    const existingUserMessage = await getMessageById({ id: userMessage.id });
+    if (!existingUserMessage) {
+      await saveMessages({
+        messages: [{
+          id: userMessage.id,
+          chatId: chatId,
+          role: userMessage.role,
+          content: { parts: userMessage.parts },
+          createdAt: new Date().toISOString(),
+        }],
+      });
+    }
 
     const toolSession = session;
     if (!toolSession) {

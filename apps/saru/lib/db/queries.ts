@@ -1,7 +1,7 @@
 import 'server-only';
 import { db } from '@saru/db'; 
 import * as schema from '@saru/db'; 
-import { eq, desc, asc, inArray, gt, and, sql, lt } from 'drizzle-orm'; // Import Drizzle operators and
+import { eq, desc, asc, inArray, gt, gte, and, sql, lt } from 'drizzle-orm'; // Import Drizzle operators and
 
 type Chat = typeof schema.Chat.$inferSelect; 
 type Message = typeof schema.Message.$inferSelect; 
@@ -516,14 +516,28 @@ export async function deleteMessagesByChatIdAfterTimestamp({
   timestamp,
 }: {
   chatId: string;
-  timestamp: string;
+  timestamp: string | Date;
 }) {
   try {
-    await db.delete(schema.Message)
-      .where(and(
-        eq(schema.Message.chatId, chatId),
-        gt(schema.Message.createdAt, timestamp)
-      ));
+    const value =
+      timestamp instanceof Date ? timestamp.toISOString() : timestamp;
+
+    if (!value || typeof value !== 'string') {
+      console.warn(
+        `[DB Query - deleteMessagesByChatIdAfterTimestamp] Invalid timestamp provided for chat ${chatId}:`,
+        timestamp
+      );
+      return;
+    }
+
+    await db
+      .delete(schema.Message)
+      .where(
+        and(
+          eq(schema.Message.chatId, chatId),
+          gte(schema.Message.createdAt, value)
+        )
+      );
   } catch (error) {
     console.error('Error deleting messages:', error);
     throw error;
