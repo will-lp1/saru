@@ -32,13 +32,13 @@ export function buildArtifactsPrompt(
 
   if (tools.includes('streamingDocument')) {
     toolGuidelines.push(
-      '• streamingDocument: Use when the user wants to generate new content or fill an empty document. Call this tool to create content based on a title/prompt.'
+      '• streamingDocument: Use when the user wants to generate new content or fill an empty document. Call this tool to create content based on a title/prompt. Output ONLY the content, no explanations or instructions.'
     );
   }
 
   if (tools.includes('updateDocument')) {
     toolGuidelines.push(
-      '• updateDocument: Use when the user wants to edit or modify existing document content. Provide clear descriptions of what changes to make.'
+      '• updateDocument: Use when the user wants to edit or modify existing document content. Provide clear descriptions of what changes to make. Output ONLY the revised content, no explanations or instructions.'
     );
   }
 
@@ -80,13 +80,17 @@ ${artifactsText}
 ${documentAwarenessPrompt}`;
 };
 
+export const streamingDocumentPrompt = (prompt: string) =>
+  `Create a document about: ${prompt}`;
+
 export const updateDocumentPrompt = (
   currentContent: string | null,
   type: null | string,
 ) =>
   type === 'text'
-    ? `Improve the following document content based on the given prompt:
+    ? `Current document content:
+${currentContent || ''}
 
-${currentContent}`
+Revised content:`
     : '';
   
