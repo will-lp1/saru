@@ -83,24 +83,18 @@ const PurePreviewMessage = ({
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   console.log("[PreviewMessage] Rendering message:", message);
 
-  // Extract reasoning from parts array
   const reasoningPart = message.parts?.find(
     (part) => part.type === "reasoning"
   );
   const reasoningText = reasoningPart ? reasoningPart.text : "";
 
-  // Extract text content from parts array
   const textParts = message.parts?.filter((part) => part.type === "text") || [];
   const textContent = textParts.map((part) => part.text).join("");
 
-  // Extract tool parts from parts array (FIXED - was looking for 'tool-invocation')
   const toolParts =
     message.parts?.filter((part) => part.type?.startsWith("tool-")) || [];
 
   console.log("[PreviewMessage] Tool parts found:", toolParts);
-
-  // Note: Live streaming into the editor is handled via Chat.onData → window events.
-  // We intentionally avoid dispatching editor updates from message rendering.
 
   return (
     <AnimatePresence>

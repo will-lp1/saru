@@ -19,17 +19,13 @@ import {
 import { toast } from 'sonner';
 import { useLocalStorage, useWindowSize } from 'usehooks-ts';
 import { MentionsInput, Mention, type SuggestionDataItem, type MentionsInputProps } from 'react-mentions';
-
-import { sanitizeUIMessages } from '@/lib/utils';
-
 import { ArrowUpIcon, StopIcon, FileIcon } from '../icons';
 import { Button } from '../ui/button';
-import { Textarea } from '../ui/textarea';
 import { SuggestedActions } from '../suggested-actions';
 import equal from 'fast-deep-equal';
-import { UseChatHelpers, UseChatOptions, UseCompletionHelpers } from '@ai-sdk/react';
+import { UseChatHelpers } from '@ai-sdk/react';
 import { useDocument } from '@/hooks/use-document';
-import { cn, generateUUID } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { useAiOptionsValue } from '@/hooks/ai-options';
 
 interface DocumentSuggestion extends SuggestionDataItem {
@@ -491,7 +487,6 @@ function PureStopButton({
       onClick={(event) => {
         event.preventDefault();
         stop();
-        setMessages((messages) => sanitizeUIMessages(messages));
       }}
     >
       <StopIcon size={14} />

@@ -21,14 +21,12 @@ import {
 import {
   generateUUID,
   getMostRecentUserMessage,
-  parseMessageContent,
   convertToUIMessages,
   convertUIMessageToDBFormat,
 } from '@/lib/utils';
 import { generateTitleFromUserMessage } from '@/app/api/chat/actions/chat';
 import { updateDocument } from '@/lib/ai/tools/update-document';
 import { streamingDocument } from '@/lib/ai/tools/document-streaming';
-import { isProductionEnvironment } from '@/lib/constants';
 import { NextResponse } from 'next/server';
 import { myProvider } from '@/lib/ai/providers';
 import { auth } from "@/lib/auth";
