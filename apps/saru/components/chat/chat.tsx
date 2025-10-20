@@ -10,6 +10,7 @@ import { ChatHeader } from '@/components/chat/chat-header';
 import { generateUUID } from '@/lib/utils';
 import { MultimodalInput } from './multimodal-input';
 import { Messages } from './messages';
+import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
 import { toast } from 'sonner';
 import { FileText } from 'lucide-react';
 import { MentionedDocument } from './multimodal-input';
@@ -89,6 +90,8 @@ export function Chat({
   };
 
   const [confirmedMentions, setConfirmedMentions] = useState<MentionedDocument[]>([]);
+  const [messagesContainerRef, messagesEndRef, scrollToBottom] =
+    useScrollToBottom<HTMLDivElement>();
 
   useEffect(() => {
     const hasDocumentContext = document.documentId !== 'init';
@@ -143,6 +146,12 @@ export function Chat({
     console.error('Chat Error:', err);
   },
   });
+
+  useEffect(() => {
+    if (status === 'submitted' || status === 'streaming') {
+      scrollToBottom();
+    }
+  }, [status, scrollToBottom]);
 
   const [attachments, setAttachments] = useState<FileList | null>(null);
 
@@ -360,7 +369,10 @@ export function Chat({
         onModelChange={handleModelChange}
       />
 
-      <div className="flex-1 overflow-y-auto relative">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto relative"
+      >
         <AnimatePresence mode="wait">
           {isLoadingChat ? (
             <motion.div
@@ -392,6 +404,7 @@ export function Chat({
                 regenerate={regenerateWithContext}
                 isReadonly={isReadonly}
                 isArtifactVisible={false}
+                messagesEndRef={messagesEndRef}
               />
             </motion.div>
           )}

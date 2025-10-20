@@ -40,7 +40,10 @@ export function PureMessageActions({
   if (message.role === "user") {
     return (
       <TooltipProvider delayDuration={0}>
-        <div className="flex flex-row justify-end -mr-0.5">
+        <div
+          data-auto-scroll-ignore
+          className="flex flex-row justify-end -mr-0.5"
+        >
           <div className="relative">
             {setMode && (
               <Tooltip>
@@ -83,7 +86,10 @@ export function PureMessageActions({
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="flex flex-row gap-1 -ml-0.5">
+      <div
+        data-auto-scroll-ignore
+        className="flex flex-row gap-1 -ml-0.5"
+      >
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

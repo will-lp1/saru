@@ -7,6 +7,7 @@ import { memo, useRef, useState, useEffect } from "react";
 import {
   DocumentToolCall,
   DocumentToolResult,
+  type DocumentToolResultProps,
 } from "@/components/document/document-tool";
 import { Markdown } from "../markdown";
 import { MessageActions } from "./message-actions";
@@ -227,7 +228,7 @@ const PurePreviewMessage = ({
                       <DocumentToolResult
                         key={`tool-result-${index}`}
                         type={actionType}
-                        result={result as any}
+                        result={{ ...result, toolCallId: p.toolCallId } as DocumentToolResultProps['result']}
                         isReadonly={isReadonly}
                       />
                     );

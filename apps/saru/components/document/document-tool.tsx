@@ -94,7 +94,7 @@ const getActionText = (
   }
 };
 
-interface DocumentToolResultProps {
+export interface DocumentToolResultProps {
   type: 'create' | 'stream' | 'update';
   result: {
     id?: string;
@@ -105,6 +105,7 @@ interface DocumentToolResultProps {
     error?: string;
     content?: string;
     message?: string;
+    toolCallId?: string;
   };
   isReadonly: boolean;
 }
@@ -146,11 +147,26 @@ function PureDocumentToolResult({
   const handleApplyUpdate = useCallback(() => {
     if (type !== 'update' || !result.newContent || !result.id || isSaving) return;
     setIsSaving(true);
-    // Optimistically apply locally
-    setDocument(prev => ({ 
-      ...prev, 
-      content: result.newContent! 
+    setDocument(prev => ({
+      ...prev,
+      content: result.newContent!
     }));
+
+    window.dispatchEvent(new CustomEvent('tool-result', {
+      detail: {
+        toolCallId: result.toolCallId,
+        result: {
+          id: result.id,
+          title: result.title,
+          originalContent: result.originalContent,
+          newContent: result.newContent,
+          status: 'Update accepted and applied.',
+          action: 'update-accepted',
+          transient: false,
+        }
+      }
+    }));
+
     window.dispatchEvent(new CustomEvent('apply-document-update', {
       detail: { documentId: result.id, newContent: result.newContent, transient: false },
     }));
@@ -173,12 +189,27 @@ function PureDocumentToolResult({
       .finally(() => {
         setIsSaving(false);
       });
-  }, [result.id, result.newContent, type, isSaving, setDocument]);
+  }, [result.id, result.newContent, result.title, result.originalContent, result.toolCallId, type, isSaving, setDocument]);
 
   const handleRejectUpdate = useCallback(() => {
     if (type !== 'update' || !result.id || !result.originalContent) return;
 
     setIsRejected(true);
+
+    window.dispatchEvent(new CustomEvent('tool-result', {
+      detail: {
+        toolCallId: result.toolCallId,
+        result: {
+          id: result.id,
+          title: result.title,
+          originalContent: result.originalContent,
+          newContent: result.newContent,
+          status: 'Update proposal rejected.',
+          action: 'update-rejected',
+          transient: false,
+        }
+      }
+    }));
 
     const event = new CustomEvent('cancel-document-update', {
       detail: {
@@ -188,7 +219,7 @@ function PureDocumentToolResult({
     });
     window.dispatchEvent(event);
     toast.info('Update proposal rejected.');
-  }, [result.id, result.originalContent, type]);
+  }, [result.id, result.title, result.originalContent, result.newContent, result.toolCallId, type]);
 
   if (result.error) {
      return (
