@@ -94,7 +94,7 @@ export function MessageEditor({
             });
 
             setMode('view');
-            regenerate();
+            regenerate({ messageId: message.id });
           }}
         >
           {isSubmitting ? 'Sending...' : 'Send'}

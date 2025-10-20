@@ -110,7 +110,7 @@ export function PureMessageActions({
               <Button
                 className="py-1 px-2 h-fit text-muted-foreground"
                 variant="outline"
-                onClick={() => regenerate()}
+                onClick={() => regenerate({ messageId: message.id })}
               >
                 <RegenerateIcon />
               </Button>
