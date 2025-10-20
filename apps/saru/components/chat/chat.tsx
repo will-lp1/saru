@@ -304,7 +304,7 @@ export function Chat({
           ? (options.body as Record<string, unknown>)
           : undefined;
 
-      regenerate({
+      return regenerate({
         ...options,
         body: buildRequestBody(existingBody),
       });
