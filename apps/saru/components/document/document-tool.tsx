@@ -150,7 +150,7 @@ function PureDocumentToolResult({
       content: result.newContent! 
     }));
     window.dispatchEvent(new CustomEvent('apply-document-update', {
-      detail: { documentId: result.id, newContent: result.newContent },
+      detail: { documentId: result.id, newContent: result.newContent, transient: false },
     }));
     setIsApplied(true);
     fetch('/api/document', {
@@ -181,6 +181,7 @@ function PureDocumentToolResult({
     const event = new CustomEvent('cancel-document-update', {
       detail: {
         documentId: result.id,
+        transient: false,
       },
     });
     window.dispatchEvent(event);
