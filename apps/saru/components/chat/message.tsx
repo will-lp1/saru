@@ -10,6 +10,7 @@ import {
 } from "@/components/document/document-tool";
 import { Markdown } from "../markdown";
 import { MessageActions } from "./message-actions";
+import { MessageEditor } from "./message-editor";
 import equal from "fast-deep-equal";
 import { cn } from "@/lib/utils";
 import { MessageReasoning } from "./message-reasoning";
@@ -79,6 +80,7 @@ const PurePreviewMessage = ({
 }) => {
   const { document } = useDocument();
   const dispatchedKeysRef = useRef<Set<string>>(new Set());
+  const [mode, setMode] = useState<'view' | 'edit'>('view');
   console.log("[PreviewMessage] Rendering message:", message);
 
   // Extract reasoning from parts array
@@ -112,7 +114,11 @@ const PurePreviewMessage = ({
         <div
           className={cn(
             "flex gap-4 w-full group-data-[role=user]/message:ml-auto group-data-[role=user]/message:max-w-2xl",
-            "group-data-[role=user]/message:w-fit"
+            "group-data-[role=user]/message:w-fit",
+            {
+              "justify-end": message.role === "user" && mode !== "edit",
+              "justify-start": message.role === "assistant",
+            }
           )}
         >
           {message.role === "assistant" && (
@@ -136,27 +142,46 @@ const PurePreviewMessage = ({
             )}
 
             {(textContent || reasoningText) && (
-              <div
-                data-testid="message-content"
-                className="flex flex-row gap-2 items-start"
-              >
-                <div
-                  className={cn("flex flex-col gap-4", {
-                    "bg-primary text-primary-foreground px-3 py-2 rounded-xl":
-                      message.role === "user",
-                  })}
-                >
-                  {typeof textContent === "string" ? (
-                    <Markdown>
-                      {formatMessageWithMentions(textContent)}
-                    </Markdown>
-                  ) : (
-                    <pre className="text-sm text-red-500">
-                      Error: Invalid message content format
-                    </pre>
-                  )}
-                </div>
-              </div>
+              <>
+                {mode === "view" && (
+                  <div
+                    data-testid="message-content"
+                    className="flex flex-row gap-2 items-start"
+                  >
+                    <div
+                      className={cn("flex flex-col gap-4", {
+                        "bg-primary text-primary-foreground px-3 py-2 rounded-xl":
+                          message.role === "user",
+                      })}
+                    >
+                      {typeof textContent === "string" ? (
+                        <Markdown>
+                          {formatMessageWithMentions(textContent)}
+                        </Markdown>
+                      ) : (
+                        <pre className="text-sm text-red-500">
+                          Error: Invalid message content format
+                        </pre>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {mode === "edit" && message.role === "user" && (
+                  <div className="flex w-full flex-row items-start gap-3">
+                    <div className="size-8" />
+                    <div className="min-w-0 flex-1">
+                      <MessageEditor
+                        key={message.id}
+                        message={message}
+                        regenerate={regenerate}
+                        setMessages={setMessages}
+                        setMode={setMode}
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {message.parts?.map((part, index) => {
@@ -230,12 +255,14 @@ const PurePreviewMessage = ({
               return null;
             })}
 
-            {!isReadonly && (
+            {!isReadonly && mode === 'view' && (
               <MessageActions
                 key={`action-${message.id}`}
                 chatId={chatId}
                 message={message}
                 isLoading={isLoading}
+                setMode={setMode}
+                regenerate={regenerate}
               />
             )}
           </div>

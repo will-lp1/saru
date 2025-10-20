@@ -74,12 +74,32 @@ export function Chat({
     stop,
     regenerate,
   } = useChat({
-  id: chatId,
-  transport: new DefaultChatTransport({
-    api: '/api/chat',
-  }),
-  messages: initialMessages,
-  // Forward custom data events from the UI stream to the editor plugin
+    id: chatId,
+    transport: new DefaultChatTransport({
+      api: '/api/chat',
+      prepareSendMessagesRequest(request) {
+        return {
+          body: {
+            id: request.id,
+            chatId: chatId,
+            messages: request.messages,
+            selectedChatModel: selectedChatModel,
+            data: {
+              activeDocumentId: document.documentId,
+              mentionedDocumentIds: [],
+            },
+            aiOptions: {
+              customInstructions: null,
+              suggestionLength: 'medium',
+              writingStyleSummary: writingStyleSummary,
+              applyStyle: applyStyle,
+            },
+          },
+        };
+      },
+    }),
+    messages: initialMessages,
+    generateId: generateUUID,
   onData: (payload: any) => {
     try {
       const data = payload && typeof payload === 'object' && 'data' in payload ? (payload as any).data : payload;
