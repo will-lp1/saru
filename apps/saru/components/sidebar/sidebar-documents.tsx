@@ -11,7 +11,6 @@ import { cn, fetcher } from '@/lib/utils';
 import {
   MoreHorizontalIcon,
   PlusIcon,
-  TrashIcon,
 } from '@/components/icons';
 import {
   AlertDialog,
@@ -193,11 +192,10 @@ const PureDocumentItem = ({
             variant="destructive"
             size="sm"
             role="menuitem"
-            className="h-7 text-sm w-full"
+            className="text-xs w-full"
             onClick={() => { setShowCustomMenu(false); onDelete(document.id); }}
           >
             Delete
-            <TrashIcon />
           </Button>
         </div>
       )}
