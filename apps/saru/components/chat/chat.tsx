@@ -148,10 +148,16 @@ export function Chat({
   });
 
   useEffect(() => {
+    let timer: NodeJS.Timeout;
     if (status === 'submitted' || status === 'streaming') {
-      scrollToBottom();
+      timer = setTimeout(() => scrollToBottom(), 50);
     }
-  }, [status, scrollToBottom]);
+    else if (messages.length > 0) {
+      timer = setTimeout(() => scrollToBottom(), 100);
+    }
+
+    return () => timer && clearTimeout(timer);
+  }, [status, messages.length, scrollToBottom]);
 
   const [attachments, setAttachments] = useState<FileList | null>(null);
 
@@ -323,7 +329,8 @@ export function Chat({
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
+    scrollToBottom();
+
     if (documentContextActive && messages.length === initialMessages.length) {
       toast.success(`Using document context: ${document.title}`, {
         icon: <FileText className="size-4" />,
@@ -346,7 +353,7 @@ export function Chat({
     const requestBody = buildRequestBody({
       data: contextData,
     });
-    
+
     sendMessage(
     { parts: [{ type: 'text', text: input }] },
     {

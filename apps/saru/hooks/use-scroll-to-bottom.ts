@@ -2,6 +2,10 @@ import { useEffect, useRef, useCallback, type RefObject } from 'react';
 
 const AUTO_SCROLL_IGNORE_ATTR = 'data-auto-scroll-ignore';
 
+function getDistanceFromBottom(container: HTMLElement): number {
+  return container.scrollHeight - container.scrollTop - container.clientHeight;
+}
+
 export function useScrollToBottom<T extends HTMLElement>(): [
   RefObject<T>,
   RefObject<T>,
@@ -18,11 +22,7 @@ export function useScrollToBottom<T extends HTMLElement>(): [
     }
 
     const updateStickiness = () => {
-      const distanceFromBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-
-      // Treat being within 80px of the bottom as "stick to bottom"
-      shouldStickToBottomRef.current = distanceFromBottom <= 80;
+      shouldStickToBottomRef.current = getDistanceFromBottom(container) <= 80;
     };
 
     container.addEventListener('scroll', updateStickiness, { passive: true });
@@ -42,26 +42,17 @@ export function useScrollToBottom<T extends HTMLElement>(): [
     }
 
     const observer = new MutationObserver(mutations => {
-      const hasRelevantMutation = mutations.some(mutation => {
-        const targetElement =
-          mutation.target instanceof Element
-            ? mutation.target
-            : mutation.target instanceof CharacterData
-              ? mutation.target.parentElement
-              : null;
+      const shouldScroll = mutations.some(mutation => {
+        const targetElement = mutation.target instanceof Element
+          ? mutation.target
+          : mutation.target.parentElement;
 
-        if (
-          targetElement &&
-          targetElement.closest(`[${AUTO_SCROLL_IGNORE_ATTR}]`)
-        ) {
+        if (targetElement?.closest(`[${AUTO_SCROLL_IGNORE_ATTR}]`)) {
           return false;
         }
 
         for (const node of mutation.addedNodes) {
-          if (
-            node instanceof Element &&
-            node.closest(`[${AUTO_SCROLL_IGNORE_ATTR}]`)
-          ) {
+          if (node instanceof Element && node.closest(`[${AUTO_SCROLL_IGNORE_ATTR}]`)) {
             return false;
           }
         }
@@ -69,7 +60,7 @@ export function useScrollToBottom<T extends HTMLElement>(): [
         return true;
       });
 
-      if (hasRelevantMutation && shouldStickToBottomRef.current) {
+      if (shouldScroll && shouldStickToBottomRef.current) {
         end.scrollIntoView({
           behavior: 'smooth',
           block: 'end',
@@ -88,8 +79,12 @@ export function useScrollToBottom<T extends HTMLElement>(): [
   }, []);
 
   const scrollToBottom = useCallback(() => {
+    const container = containerRef.current;
     const end = endRef.current;
-    if (end) {
+
+    if (!container || !end) return;
+
+    if (getDistanceFromBottom(container) > 100) {
       end.scrollIntoView({
         behavior: 'smooth',
         block: 'end',
