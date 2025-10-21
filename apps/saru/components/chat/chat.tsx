@@ -159,7 +159,6 @@ export function Chat({
     return () => timer && clearTimeout(timer);
   }, [status, messages.length, scrollToBottom]);
 
-  const [attachments, setAttachments] = useState<FileList | null>(null);
 
   const handleMentionsChange = (mentions: MentionedDocument[]) => {
     setConfirmedMentions(mentions);
@@ -361,9 +360,7 @@ export function Chat({
     }
   );
 
-    // Clear input and attachments
     setInput('');
-    setAttachments(null);
     setConfirmedMentions([]);
   };
 
@@ -429,11 +426,9 @@ export function Chat({
               handleSubmit={handleSubmit}
               status={status}
               stop={stop}
-              attachments={attachments}
-              setAttachments={setAttachments}
               messages={messages}
               setMessages={setMessages}
-              sendMessage={sendMessage} // Updated from append to sendMessage
+              sendMessage={sendMessage}
               confirmedMentions={confirmedMentions}
               onMentionsChange={handleMentionsChange}
             />

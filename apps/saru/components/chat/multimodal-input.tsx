@@ -19,10 +19,9 @@ import {
 import { toast } from 'sonner';
 import { useLocalStorage, useWindowSize } from 'usehooks-ts';
 import { MentionsInput, Mention, type SuggestionDataItem, type MentionsInputProps } from 'react-mentions';
-import { ArrowUpIcon, StopIcon, FileIcon } from '../icons';
+import { ArrowUpIcon, StopIcon } from '../icons';
 import { Button } from '../ui/button';
 import { SuggestedActions } from '../suggested-actions';
-import equal from 'fast-deep-equal';
 import { UseChatHelpers } from '@ai-sdk/react';
 import { useDocument } from '@/hooks/use-document';
 import { cn } from '@/lib/utils';
@@ -121,11 +120,9 @@ function PureMultimodalInput({
   setInput,
   status,
   stop,
-  attachments,
-  setAttachments,
   messages,
   setMessages,
-  sendMessage, // Updated from append to sendMessage
+  sendMessage,
   handleSubmit,
   className,
   confirmedMentions,
@@ -133,16 +130,14 @@ function PureMultimodalInput({
 }: {
   chatId: string;
   selectedChatModel: string,
-  input: string; // Now plain string instead of UseCompletionHelpers['input']
-  setInput: (input: string) => void; // Now plain setter instead of UseCompletionHelpers['setInput']
+  input: string; 
+  setInput: (input: string) => void; 
   status: UseChatHelpers<UIMessage>['status'];
   stop: () => void;
-  attachments: FileList | null;
-  setAttachments: Dispatch<SetStateAction<FileList | null>>;
   messages: Array<UIMessage>;
   setMessages: Dispatch<SetStateAction<Array<UIMessage>>>;
-  sendMessage: UseChatHelpers<UIMessage>['sendMessage']; // Updated type
-  handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void; // Custom form handler
+  sendMessage: UseChatHelpers<UIMessage>['sendMessage']; 
+  handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void; 
   className?: string;
   confirmedMentions: MentionedDocument[];
   onMentionsChange: (mentions: MentionedDocument[]) => void;
@@ -165,7 +160,7 @@ function PureMultimodalInput({
   useEffect(() => {
     const initialVal = localStorageInput || '';
     setInputValue(initialVal);
-    setInput(initialVal); // Sync with parent
+    setInput(initialVal);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -196,8 +191,6 @@ function PureMultimodalInput({
     setMarkupValue(newPlainTextValue);
   };
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadQueue, setUploadQueue] = useState<Array<string>>([]);
 
   const submitForm = useCallback(() => {
     const contextData: {
@@ -212,22 +205,7 @@ function PureMultimodalInput({
       contextData.mentionedDocumentIds = confirmedMentions.map(doc => doc.id);
     }
     
-    // Create message parts
     const parts: any[] = [{ type: 'text', text: inputValue }];
-    
-    // Add file attachments as parts if any exist
-    if (attachments && attachments.length > 0) {
-      // Note: You'll need to handle file conversion to the appropriate format
-      // This depends on how your backend expects file attachments
-      Array.from(attachments).forEach(file => {
-        parts.push({
-          type: 'file',
-          // Add file properties as needed by your backend
-          name: file.name,
-          // You may need to convert to base64 or handle differently
-        });
-      });
-    }
 
     const requestBody = {
       chatId: chatId,
@@ -245,28 +223,24 @@ function PureMultimodalInput({
       }
     );
 
-    setAttachments(null);
     setInputValue('');
     setMarkupValue('');
-    setInput(''); // Clear parent input state
-    onMentionsChange([]); // Clear confirmed mentions in parent
+    setInput('');
+    onMentionsChange([]);
 
     if (width && width > 768) {
       mentionInputRef.current?.focus();
     }
   }, [
     inputValue,
-    attachments,
     currentDoc.documentId,
     confirmedMentions,
     sendMessage,
-    setAttachments,
     setInput,
     onMentionsChange,
     width,
   ]);
 
-  // Fetch suggestions for react-mentions
   const fetchSuggestions = (
     query: string,
     callback: (data: SuggestionDataItem[]) => void
@@ -282,7 +256,7 @@ function PureMultimodalInput({
       .then(data => {
         const suggestions = (data.results || []).map((doc: any) => ({
           id: doc.id,
-          display: doc.title, // Use display for react-mentions
+          display: doc.title,
         }));
         setFileSuggestions(suggestions);
         callback(suggestions);
@@ -296,76 +270,6 @@ function PureMultimodalInput({
       });
   };
 
-  const uploadFile = async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await fetch('/api/files/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const { url, pathname, contentType } = data;
-
-        return {
-          url,
-          name: pathname,
-          contentType: contentType,
-        };
-      }
-      const { error } = await response.json();
-      toast.error(error);
-    } catch (error) {
-      toast.error('Failed to upload file, please try again!');
-    }
-  };
-
-  const handleFileChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-
-    setUploadQueue(files.map((file) => file.name));
-
-    try {
-      const uploadPromises = files.map((file) => uploadFile(file));
-      const uploadedAttachments = await Promise.all(uploadPromises);
-      const successfullyUploadedAttachments = uploadedAttachments.filter(
-        (attachment) => attachment !== undefined,
-      );
-
-      setAttachments((currentAttachments) => {
-        const currentArray = currentAttachments ? Array.from(currentAttachments) : [];
-        const newFileList = new DataTransfer();
-        
-        // Add existing files
-        currentArray.forEach(file => {
-          if (file instanceof File) {
-            newFileList.items.add(file);
-          }
-        });
-        
-        // Add new files
-        successfullyUploadedAttachments.forEach(attachment => {
-          if (attachment) {
-            // You'll need to create File objects from your upload response
-            // This is a simplified example - adjust based on your upload response format
-            const file = new File([''], attachment.name, { type: attachment.contentType });
-            newFileList.items.add(file);
-          }
-        });
-        
-        return newFileList.files;
-      });
-    } catch (error) {
-      console.error('Error uploading files!', error);
-    } finally {
-      setUploadQueue([]);
-    }
-  }, [setAttachments]);
-
-  // Determine styles based on theme (Keep as is)
   const [isDarkMode, setIsDarkMode] = useState(false);
   useEffect(() => {
     setIsDarkMode(document.documentElement.classList.contains('dark'));
@@ -405,21 +309,10 @@ function PureMultimodalInput({
   return (
     <div className="relative w-full flex flex-col gap-4" onKeyDown={handleKeyDown}>
       {messages.length === 0 &&
-        attachments === null &&
-        uploadQueue.length === 0 &&
         confirmedMentions.length === 0 && (
           <SuggestedActions sendMessage={sendMessage} chatId={chatId} />
         )}
 
-      <input
-        type="file"
-        className="fixed -top-4 -left-4 size-0.5 opacity-0 pointer-events-none"
-        ref={fileInputRef}
-        multiple
-        onChange={handleFileChange}
-        tabIndex={-1}
-      />
-      
       <div className="relative">
         <MentionsInput
           inputRef={mentionInputRef}
@@ -454,7 +347,6 @@ function PureMultimodalInput({
             <SendButton
               input={inputValue}
               submitForm={submitForm}
-              uploadQueue={uploadQueue}
             />
           )}
         </div>
@@ -468,7 +360,6 @@ export const MultimodalInput = memo(
   (prevProps, nextProps) => {
     if (prevProps.input !== nextProps.input) return false;
     if (prevProps.status !== nextProps.status) return false;
-    if (!equal(prevProps.attachments, nextProps.attachments)) return false;
     return true;
   },
 );
@@ -499,11 +390,9 @@ const StopButton = memo(PureStopButton);
 function PureSendButton({
   submitForm,
   input,
-  uploadQueue,
 }: {
   submitForm: () => void;
   input: string;
-  uploadQueue: Array<string>;
 }) {
   return (
     <Button
@@ -513,7 +402,7 @@ function PureSendButton({
         event.preventDefault();
         submitForm();
       }}
-      disabled={input.trim().length === 0 || uploadQueue.length > 0} // Check input.trim()
+      disabled={input.trim().length === 0}
     >
       <ArrowUpIcon size={14} />
     </Button>
@@ -521,8 +410,6 @@ function PureSendButton({
 }
 
 const SendButton = memo(PureSendButton, (prevProps, nextProps) => {
-  if (prevProps.uploadQueue.length !== nextProps.uploadQueue.length)
-    return false;
   if (prevProps.input !== nextProps.input) return false;
   return true;
 });
