@@ -6,7 +6,6 @@ import { getSessionCookie } from 'better-auth/cookies';
 async function handleInlineSuggestionRequest(
   contextBefore: string,
   contextAfter: string,
-  fullContent: string,
   suggestionLength: 'short' | 'medium' | 'long' = 'medium',
   customInstructions?: string | null,
   writingStyleSummary?: string | null,
@@ -27,7 +26,7 @@ async function handleInlineSuggestionRequest(
     try {
       console.log("Starting to process inline suggestion stream");
 
-      await streamInlineSuggestion({ contextBefore, contextAfter, fullContent, suggestionLength, customInstructions, writingStyleSummary, applyStyle, structureInfo, write: async (type, content) => {
+      await streamInlineSuggestion({ contextBefore, contextAfter, suggestionLength, customInstructions, writingStyleSummary, applyStyle, structureInfo, write: async (type, content) => {
         if (writerClosed) return;
 
         try {
@@ -95,10 +94,10 @@ export async function POST(request: NextRequest) {
     if (!sessionCookie) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const { contextBefore = '', contextAfter = '', fullContent = '', structureInfo = {}, aiOptions = {} } = await request.json();
+    const { contextBefore = '', contextAfter = '', structureInfo = {}, aiOptions = {} } = await request.json();
     const { suggestionLength, customInstructions, writingStyleSummary, applyStyle } = aiOptions;
 
-    return handleInlineSuggestionRequest(contextBefore, contextAfter, fullContent, suggestionLength, customInstructions, writingStyleSummary, applyStyle, structureInfo);
+    return handleInlineSuggestionRequest(contextBefore, contextAfter, suggestionLength, customInstructions, writingStyleSummary, applyStyle, structureInfo);
   } catch (error: any) {
     console.error('Inline suggestion route error:', error);
     return NextResponse.json({ error: error.message || 'An error occurred' }, { status: 400 });
@@ -117,7 +116,6 @@ async function streamInlineSuggestion({
 }: {
   contextBefore: string;
   contextAfter: string;
-  fullContent?: string;
   suggestionLength: 'short' | 'medium' | 'long';
   customInstructions?: string | null;
   writingStyleSummary?: string | null;
@@ -178,10 +176,13 @@ function buildPrompt({
   applyStyle,
   structureInfo,
 }: BuildPromptParams): string {
-  const contextWindow = 1000;
+  const contextWindow = 500; 
 
   const beforeSnippet = contextBefore.slice(-contextWindow);
   const afterSnippet = contextAfter.slice(0, contextWindow);
+
+  const contextText = `${beforeSnippet}▮${afterSnippet}`;
+
   const wordLimitMap = { short: 5, medium: 12, long: 25 } as const;
   const maxWords = wordLimitMap[suggestionLength] ?? 12;
 
@@ -198,6 +199,9 @@ function buildPrompt({
   rules.push('Preserve paragraph structure: if the context ends with blank lines, start a new paragraph; otherwise continue the current sentence.');
   rules.push('If multiple blank lines indicate a gap, continue after the gap without inventing missing sections.');
   rules.push('Never start or finish in the middle of a word.');
+  rules.push('When generating from within a sentence, pay close attention to the words immediately before and after the cursor (▮) - ensure the continuation integrates seamlessly without repeating, contradicting, or breaking the grammatical flow.');
+  rules.push('Be highly aware of the immediate context: the last few words before ▮ and the next few words after ▮ should guide your continuation to maintain perfect coherence.');
+  rules.push('If the cursor is mid-sentence, your continuation should feel like a natural extension that could have been written by the same author in that moment.');
 
   rules.push('If a GUIDANCE section is provided below, follow it EXACTLY.');
 
@@ -222,7 +226,7 @@ function buildPrompt({
   }
   const notesBlock = notes.length ? `\n\nGUIDANCE:\n${notes.join('\n')}` : '';
 
-  const prompt = `You are an expert autocomplete assistant.\n\nRules:\n${numberedRules}${notesBlock}\n\nContext ("▮" marks cursor position):\n<<<\n${beforeSnippet}▮${afterSnippet}\n>>>`;
+  const prompt = `You are an expert autocomplete assistant.\n\nRules:\n${numberedRules}${notesBlock}\n\nContext (▮):\n<<<\n${contextText}\n>>>`;
 
   return prompt;
 } 
