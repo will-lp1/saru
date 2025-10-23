@@ -12,16 +12,19 @@ import {
   TooltipTrigger,
 } from '../ui/tooltip';
 import { toast } from 'sonner';
+import { getTrailingMessageId } from '@/lib/utils';
 
 export function PureMessageActions({
   chatId,
   message,
+  messages,
   isLoading,
   setMode,
   regenerate,
 }: {
   chatId: string;
   message: UIMessage;
+  messages: UIMessage[];
   isLoading: boolean;
   setMode?: (mode: 'view' | 'edit') => void;
   regenerate?: UseChatHelpers<UIMessage>['regenerate'];
@@ -30,7 +33,6 @@ export function PureMessageActions({
 
   if (isLoading) return null;
 
-  // Check for tool parts instead of deprecated toolInvocations
   const hasToolParts = message.parts?.some(part =>
     part.type?.startsWith('tool-')
   ) ?? false;
@@ -49,7 +51,7 @@ export function PureMessageActions({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    className="-left-10 absolute top-0 py-1 px-2 h-fit text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100"
+                    className="-left-8 absolute top-0 py-1 px-2 h-fit text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100 touch-hitbox"
                     variant="outline"
                     onClick={() => setMode('edit')}
                   >
@@ -62,10 +64,9 @@ export function PureMessageActions({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  className="py-1 px-2 h-fit text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100"
+                  className="py-1 px-2 h-fit text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100 touch-hitbox"
                   variant="outline"
                   onClick={async () => {
-                    // Extract text content from parts
                     const textParts = message.parts?.filter(part => part.type === 'text') ?? [];
                     const content = textParts.map(part => part.text).join('');
 
@@ -93,10 +94,9 @@ export function PureMessageActions({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              className="py-1 px-2 h-fit text-muted-foreground"
+              className="py-1 px-2 h-fit text-muted-foreground touch-hitbox"
               variant="outline"
               onClick={async () => {
-                // Extract text content from parts
                 const textParts = message.parts?.filter(part => part.type === 'text') ?? [];
                 const content = textParts.map(part => part.text).join('');
 
@@ -114,9 +114,15 @@ export function PureMessageActions({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                className="py-1 px-2 h-fit text-muted-foreground"
+                className="py-1 px-2 h-fit text-muted-foreground touch-hitbox"
                 variant="outline"
-                onClick={() => regenerate({ messageId: message.id })}
+                onClick={() => {
+                  const trailingMessageId = getTrailingMessageId({ messages });
+                  regenerate({
+                    messageId: message.id,
+                    body: { trailingMessageId }
+                  });
+                }}
               >
                 <RegenerateIcon />
               </Button>
