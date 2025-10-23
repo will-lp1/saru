@@ -544,6 +544,45 @@ export async function deleteMessagesByChatIdAfterTimestamp({
   }
 }
 
+export async function deleteMessagesAfterMessageId({
+  chatId,
+  messageId,
+}: {
+  chatId: string;
+  messageId: string;
+}) {
+  try {
+    const message = await db
+      .select({ createdAt: schema.Message.createdAt })
+      .from(schema.Message)
+      .where(
+        and(
+          eq(schema.Message.id, messageId),
+          eq(schema.Message.chatId, chatId)
+        )
+      )
+      .limit(1);
+
+    if (!message.length) {
+      console.warn(`Message ${messageId} not found in chat ${chatId}`);
+      return;
+    }
+
+    const messageTimestamp = message[0].createdAt;
+
+    await db
+      .delete(schema.Message)
+      .where(
+        and(
+          eq(schema.Message.chatId, chatId),
+          gte(schema.Message.createdAt, messageTimestamp)
+        )
+      );
+  } catch (error) {
+    console.error('Error deleting messages after message ID:', error);
+    throw error;
+  }
+}
 
 export async function updateChatContextQuery({
   chatId,
@@ -1119,4 +1158,21 @@ export async function forkDocumentWithHistory({
     
     return forkedDocument[0];
   });
+}
+
+export async function deleteMessageById({
+  chatId,
+  messageId,
+}: {
+  chatId: string;
+  messageId: string;
+}) {
+  try {
+    await db
+      .delete(schema.Message)
+      .where(and(eq(schema.Message.chatId, chatId), eq(schema.Message.id, messageId)));
+  } catch (error) {
+    console.error('Error deleting message by ID:', error);
+    throw error;
+  }
 }

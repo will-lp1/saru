@@ -51,7 +51,7 @@ export function PureMessageActions({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    className="-left-8 absolute top-0 py-1 px-2 h-fit text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100 touch-hitbox"
+                    className="-left-10 absolute top-0 py-1 px-2 h-fit text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100"
                     variant="outline"
                     onClick={() => setMode('edit')}
                   >
@@ -120,7 +120,10 @@ export function PureMessageActions({
                   const trailingMessageId = getTrailingMessageId({ messages });
                   regenerate({
                     messageId: message.id,
-                    body: { trailingMessageId }
+                    body: {
+                      regenerateFromMessageId: message.id,
+                      trailingMessageId,
+                    },
                   });
                 }}
               >

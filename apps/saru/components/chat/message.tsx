@@ -65,6 +65,7 @@ function formatMessageWithMentions(content: string) {
 const PurePreviewMessage = ({
   chatId,
   message,
+  messages,
   isLoading,
   setMessages,
   regenerate,
@@ -72,6 +73,7 @@ const PurePreviewMessage = ({
 }: {
   chatId: string;
   message: UIMessage;
+  messages: UIMessage[];
   isLoading: boolean;
   setMessages: (
     messages: UIMessage[] | ((messages: UIMessage[]) => UIMessage[])
@@ -255,6 +257,7 @@ const PurePreviewMessage = ({
                 key={`action-${message.id}`}
                 chatId={chatId}
                 message={message}
+                messages={messages}
                 isLoading={isLoading}
                 setMode={setMode}
                 regenerate={regenerate}

@@ -17,6 +17,7 @@ import {
   getMessagesByChatId,
   getMessageById,
   updateChatContextQuery,
+  deleteMessagesAfterMessageId,
 } from '@/lib/db/queries';
 import {
   generateUUID,
@@ -175,6 +176,8 @@ export async function POST(request: Request) {
       selectedChatModel: string;
       data?: ChatRequestData;
       aiOptions?: ChatAiOptions | null;
+      regenerateFromMessageId?: string;
+      trailingMessageId?: string;
     }
 
     const {
@@ -184,6 +187,8 @@ export async function POST(request: Request) {
       selectedChatModel,
       data: requestData,
       aiOptions,
+      regenerateFromMessageId,
+      trailingMessageId,
     }: ChatRequestBody = await request.json();
 
     const activeDocumentId: ActiveDocumentId = requestData?.activeDocumentId ?? null;
@@ -231,6 +236,14 @@ export async function POST(request: Request) {
       });
     }
 
+    const effectiveMessages = regenerateFromMessageId
+      ? (() => {
+          const index = messages.findIndex((m) => m.id === regenerateFromMessageId);
+          if (index === -1) return messages;
+          return messages.slice(0, index); 
+        })()
+      : messages;
+
     const existingUserMessage = await getMessageById({ id: userMessage.id });
     if (!existingUserMessage) {
       await saveMessages({
@@ -242,6 +255,10 @@ export async function POST(request: Request) {
           createdAt: new Date().toISOString(),
         }],
       });
+    }
+
+    if (trailingMessageId) {
+      await deleteMessagesAfterMessageId({ chatId, messageId: trailingMessageId });
     }
 
     const toolSession = session;
@@ -319,7 +336,7 @@ export async function POST(request: Request) {
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: dynamicSystemPrompt,
-          messages: convertToModelMessages(messages),
+          messages: convertToModelMessages(effectiveMessages),
           stopWhen: stepCountIs(2),
           experimental_activeTools: activeToolsList,
           experimental_transform: smoothStream({ chunking: 'word' }),
