@@ -189,7 +189,7 @@ export async function POST(request: Request) {
       trailingMessageId,
     }: ChatRequestBody = await request.json();
 
-    const activeDocumentId: ActiveDocumentId = requestData?.activeDocumentId ?? null;
+    const activeDocumentId: ActiveDocumentId = requestData?.activeDocumentId ?? undefined;
     const mentionedDocumentIds = requestData?.mentionedDocumentIds ?? undefined;
     const customInstructions = aiOptions?.customInstructions ?? null;
     const suggestionLength = aiOptions?.suggestionLength ?? 'medium';
@@ -249,7 +249,12 @@ export async function POST(request: Request) {
     }
 
     if (trailingMessageId) {
-      await deleteMessagesAfterMessageId({ chatId, messageId: trailingMessageId });
+      const anchorMessage = await getMessageById({ id: trailingMessageId });
+      if (anchorMessage && anchorMessage.chatId === chatId) {
+        await deleteMessagesAfterMessageId({ chatId, messageId: trailingMessageId });
+      } else {
+        console.warn(`Invalid trailingMessageId ${trailingMessageId} for chat ${chatId}`);
+      }
     }
 
     const toolSession = session;
@@ -258,7 +263,7 @@ export async function POST(request: Request) {
     }
 
 
-    let validatedActiveDocumentId: string | null = null;
+    let validatedActiveDocumentId: string | undefined = undefined;
     let activeDoc: Document | null = null;
     if (activeDocumentId && uuidRegex.test(activeDocumentId)) {
         try {
@@ -278,8 +283,7 @@ export async function POST(request: Request) {
     const activeDocumentContent = activeDoc?.content ?? '';
     const isActiveDocumentEmpty = activeDocumentContent.trim().length === 0;
 
-    if (!validatedActiveDocumentId) {
-      // No active document - only allow streaming document for new content generation
+    if (validatedActiveDocumentId === undefined) {
       availableTools.streamingDocument = streamingDocument({ session: toolSession });
       activeToolsList.push('streamingDocument');
     } else {
@@ -305,7 +309,7 @@ export async function POST(request: Request) {
 
     const dynamicSystemPrompt = await createEnhancedSystemPrompt({
       selectedChatModel,
-      activeDocumentId,
+      activeDocumentId: validatedActiveDocumentId,
       mentionedDocumentIds,
       customInstructions,
       writingStyleSummary,
@@ -320,7 +324,7 @@ export async function POST(request: Request) {
           toolsWithStream.streamingDocument = streamingDocument({
             session: toolSession,
             dataStream,
-            documentId: validatedActiveDocumentId ?? undefined,
+            documentId: validatedActiveDocumentId,
           });
         }
 
@@ -341,7 +345,7 @@ export async function POST(request: Request) {
       onFinish: async ({ messages: allMessages }) => {
         if (userId) {
           try {
-            const assistant = allMessages.find((m) => m.role === 'assistant') ?? allMessages[allMessages.length - 1];
+            const assistant = allMessages.findLast((m) => m.role === 'assistant') ?? allMessages[allMessages.length - 1];
             if (assistant) {
               const dbMessage = convertUIMessageToDBFormat(assistant, chatId);
               await saveMessages({ messages: [dbMessage] });

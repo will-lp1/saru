@@ -138,7 +138,9 @@ export function Chat({
         });
         window.dispatchEvent(finishEvent);
       }
-    } catch {}
+    } catch (error) {
+      console.error('Error processing chat data payload:', error);
+    }
   },
   onError: (err) => {
     console.error('Chat Error:', err);
@@ -146,15 +148,19 @@ export function Chat({
   });
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let timerId: number | undefined;
+
     if (status === 'submitted' || status === 'streaming') {
-      timer = setTimeout(() => scrollToBottom(), 50);
-    }
-    else if (messages.length > 0) {
-      timer = setTimeout(() => scrollToBottom(), 100);
+      timerId = window.setTimeout(() => scrollToBottom(), 50);
+    } else if (messages.length > 0) {
+      timerId = window.setTimeout(() => scrollToBottom(), 100);
     }
 
-    return () => timer && clearTimeout(timer);
+    return () => {
+      if (timerId !== undefined) {
+        window.clearTimeout(timerId);
+      }
+    };
   }, [status, messages.length, scrollToBottom]);
 
 
@@ -272,7 +278,7 @@ export function Chat({
       const activeDocumentId =
         document.documentId && document.documentId !== 'init'
           ? document.documentId
-          : null;
+          : undefined;
 
       const incoming = body ?? {};
       const incomingData =
@@ -340,7 +346,7 @@ export function Chat({
       activeDocumentId:
         document.documentId && document.documentId !== 'init'
           ? document.documentId
-          : null,
+          : undefined,
     };
 
     if (confirmedMentions.length > 0) {
