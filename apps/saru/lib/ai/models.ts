@@ -19,7 +19,7 @@ export const chatModels: Array<ChatModel> = [
     description: 'Large and powerful model',  },
   {
     id: 'chat-model-reasoning',
-    name: 'Deepseek R1',
+    name: 'GPT OSS',
     description: 'Advanced reasoning model',
   },
 ];

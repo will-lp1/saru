@@ -1,35 +1,29 @@
 'use client';
 
-import { ChatRequestOptions, Message } from 'ai';
+import { UIMessage } from 'ai';
+import { UseChatHelpers } from '@ai-sdk/react';
 import { Button } from '../ui/button';
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
 import { Textarea } from '../ui/textarea';
 import { deleteTrailingMessages } from '@/app/api/chat/actions/chat';
-import { toast } from 'sonner';
 
 export type MessageEditorProps = {
-  message: Message;
+  message: UIMessage;
   setMode: Dispatch<SetStateAction<'view' | 'edit'>>;
-  setMessages: (
-    messages: Message[] | ((messages: Message[]) => Message[]),
-  ) => void;
-  reload: (
-    chatRequestOptions?: ChatRequestOptions,
-  ) => Promise<string | null | undefined>;
+  setMessages: UseChatHelpers<UIMessage>['setMessages'];
+  regenerate: UseChatHelpers<UIMessage>['regenerate'];
 };
 
 export function MessageEditor({
   message,
   setMode,
   setMessages,
-  reload,
+  regenerate,
 }: MessageEditorProps) {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Handle content properly regardless of type
-  const initialContent = typeof message.content === 'string' 
-    ? message.content 
-    : JSON.stringify(message.content);
+  const textParts = message.parts?.filter(part => part.type === 'text') || [];
+  const initialContent = textParts.map(part => part.text).join('');
     
   const [draftContent, setDraftContent] = useState<string>(initialContent);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -88,9 +82,9 @@ export function MessageEditor({
               const index = messages.findIndex((m) => m.id === message.id);
 
               if (index !== -1) {
-                const updatedMessage = {
+                const updatedMessage: UIMessage = {
                   ...message,
-                  content: draftContent,
+                  parts: [{ type: 'text', text: draftContent }],
                 };
 
                 return [...messages.slice(0, index), updatedMessage];
@@ -100,7 +94,7 @@ export function MessageEditor({
             });
 
             setMode('view');
-            reload();
+            regenerate({ messageId: message.id });
           }}
         >
           {isSubmitting ? 'Sending...' : 'Send'}

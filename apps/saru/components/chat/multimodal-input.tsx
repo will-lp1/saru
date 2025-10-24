@@ -1,10 +1,8 @@
 'use client';
 
 import type {
-  Attachment,
   ChatRequestOptions,
-  CreateMessage,
-  Message,
+  UIMessage,
 } from 'ai';
 import cx from 'classnames';
 import type React from 'react';
@@ -21,17 +19,13 @@ import {
 import { toast } from 'sonner';
 import { useLocalStorage, useWindowSize } from 'usehooks-ts';
 import { MentionsInput, Mention, type SuggestionDataItem, type MentionsInputProps } from 'react-mentions';
-
-import { sanitizeUIMessages } from '@/lib/utils';
-
-import { ArrowUpIcon, StopIcon, FileIcon } from '../icons';
+import { ArrowUpIcon, StopIcon } from '../icons';
 import { Button } from '../ui/button';
-import { Textarea } from '../ui/textarea';
 import { SuggestedActions } from '../suggested-actions';
-import equal from 'fast-deep-equal';
-import { UseChatHelpers, UseChatOptions } from '@ai-sdk/react';
+import { UseChatHelpers } from '@ai-sdk/react';
 import { useDocument } from '@/hooks/use-document';
-import { cn, generateUUID } from '@/lib/utils';
+import { cn } from '@/lib/utils';
+import { useAiOptionsValue } from '@/hooks/ai-options';
 
 interface DocumentSuggestion extends SuggestionDataItem {
   id: string;
@@ -121,31 +115,29 @@ const mentionStyleDark: React.CSSProperties = {
 
 function PureMultimodalInput({
   chatId,
+  selectedChatModel,
   input,
   setInput,
   status,
   stop,
-  attachments,
-  setAttachments,
   messages,
   setMessages,
-  append,
+  sendMessage,
   handleSubmit,
   className,
   confirmedMentions,
   onMentionsChange,
 }: {
   chatId: string;
-  input: UseChatHelpers['input'];
-  setInput: UseChatHelpers['setInput'];
-  status: UseChatHelpers['status'];
+  selectedChatModel: string,
+  input: string; 
+  setInput: (input: string) => void; 
+  status: UseChatHelpers<UIMessage>['status'];
   stop: () => void;
-  attachments: Array<Attachment>;
-  setAttachments: Dispatch<SetStateAction<Array<Attachment>>>;
-  messages: Array<Message>;
-  setMessages: Dispatch<SetStateAction<Array<Message>>>;
-  append: UseChatHelpers['append'];
-  handleSubmit: UseChatHelpers['handleSubmit'];
+  messages: Array<UIMessage>;
+  setMessages: Dispatch<SetStateAction<Array<UIMessage>>>;
+  sendMessage: UseChatHelpers<UIMessage>['sendMessage']; 
+  handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void; 
   className?: string;
   confirmedMentions: MentionedDocument[];
   onMentionsChange: (mentions: MentionedDocument[]) => void;
@@ -161,11 +153,14 @@ function PureMultimodalInput({
   
   const [inputValue, setInputValue] = useState(input);
   const [markupValue, setMarkupValue] = useState('');
+  const { writingStyleSummary, applyStyle } = useAiOptionsValue();
 
   const [localStorageInput, setLocalStorageInput] = useLocalStorage('input', '');
+  
   useEffect(() => {
     const initialVal = localStorageInput || '';
     setInputValue(initialVal);
+    setInput(initialVal);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -196,8 +191,6 @@ function PureMultimodalInput({
     setMarkupValue(newPlainTextValue);
   };
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadQueue, setUploadQueue] = useState<Array<string>>([]);
 
   const submitForm = useCallback(() => {
     const contextData: {
@@ -212,32 +205,42 @@ function PureMultimodalInput({
       contextData.mentionedDocumentIds = confirmedMentions.map(doc => doc.id);
     }
     
-    const options: ChatRequestOptions = {
-      experimental_attachments: attachments,
+    const parts: any[] = [{ type: 'text', text: inputValue }];
+
+    const requestBody = {
+      chatId: chatId,
+      selectedChatModel: selectedChatModel,
+      aiOptions: { writingStyleSummary, applyStyle },
       data: contextData,
     };
-    
-    handleSubmit(undefined, options);
+  
+    sendMessage(
+      { 
+        parts: parts
+      },
+      {
+        body: requestBody,
+      }
+    );
 
-    setAttachments([]);
     setInputValue('');
     setMarkupValue('');
-    onMentionsChange([]); // Clear confirmed mentions in parent
+    setInput('');
+    onMentionsChange([]);
 
     if (width && width > 768) {
       mentionInputRef.current?.focus();
     }
   }, [
-    attachments,
+    inputValue,
     currentDoc.documentId,
     confirmedMentions,
-    handleSubmit,
-    setAttachments,
+    sendMessage,
+    setInput,
     onMentionsChange,
     width,
   ]);
 
-  // Fetch suggestions for react-mentions
   const fetchSuggestions = (
     query: string,
     callback: (data: SuggestionDataItem[]) => void
@@ -253,7 +256,7 @@ function PureMultimodalInput({
       .then(data => {
         const suggestions = (data.results || []).map((doc: any) => ({
           id: doc.id,
-          display: doc.title, // Use display for react-mentions
+          display: doc.title,
         }));
         setFileSuggestions(suggestions);
         callback(suggestions);
@@ -267,57 +270,6 @@ function PureMultimodalInput({
       });
   };
 
-  const uploadFile = async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await fetch('/api/files/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const { url, pathname, contentType } = data;
-
-        return {
-          url,
-          name: pathname,
-          contentType: contentType,
-        };
-      }
-      const { error } = await response.json();
-      toast.error(error);
-    } catch (error) {
-      toast.error('Failed to upload file, please try again!');
-    }
-  };
-
-  const handleFileChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-
-    setUploadQueue(files.map((file) => file.name));
-
-    try {
-      const uploadPromises = files.map((file) => uploadFile(file));
-      const uploadedAttachments = await Promise.all(uploadPromises);
-      const successfullyUploadedAttachments = uploadedAttachments.filter(
-        (attachment) => attachment !== undefined,
-      );
-
-      setAttachments((currentAttachments) => [
-        ...currentAttachments,
-        ...successfullyUploadedAttachments,
-      ]);
-    } catch (error) {
-      console.error('Error uploading files!', error);
-    } finally {
-      setUploadQueue([]);
-    }
-  }, [setAttachments]);
-
-  // Determine styles based on theme (Keep as is)
   const [isDarkMode, setIsDarkMode] = useState(false);
   useEffect(() => {
     setIsDarkMode(document.documentElement.classList.contains('dark'));
@@ -357,21 +309,10 @@ function PureMultimodalInput({
   return (
     <div className="relative w-full flex flex-col gap-4" onKeyDown={handleKeyDown}>
       {messages.length === 0 &&
-        attachments.length === 0 &&
-        uploadQueue.length === 0 &&
         confirmedMentions.length === 0 && (
-          <SuggestedActions append={append} chatId={chatId} />
+          <SuggestedActions sendMessage={sendMessage} chatId={chatId} />
         )}
 
-      <input
-        type="file"
-        className="fixed -top-4 -left-4 size-0.5 opacity-0 pointer-events-none"
-        ref={fileInputRef}
-        multiple
-        onChange={handleFileChange}
-        tabIndex={-1}
-      />
-      
       <div className="relative">
         <MentionsInput
           inputRef={mentionInputRef}
@@ -406,7 +347,6 @@ function PureMultimodalInput({
             <SendButton
               input={inputValue}
               submitForm={submitForm}
-              uploadQueue={uploadQueue}
             />
           )}
         </div>
@@ -420,7 +360,6 @@ export const MultimodalInput = memo(
   (prevProps, nextProps) => {
     if (prevProps.input !== nextProps.input) return false;
     if (prevProps.status !== nextProps.status) return false;
-    if (!equal(prevProps.attachments, nextProps.attachments)) return false;
     return true;
   },
 );
@@ -430,7 +369,7 @@ function PureStopButton({
   setMessages,
 }: {
   stop: () => void;
-  setMessages: Dispatch<SetStateAction<Array<Message>>>;
+  setMessages: Dispatch<SetStateAction<Array<UIMessage>>>;
 }) {
   return (
     <Button
@@ -439,7 +378,6 @@ function PureStopButton({
       onClick={(event) => {
         event.preventDefault();
         stop();
-        setMessages((messages) => sanitizeUIMessages(messages));
       }}
     >
       <StopIcon size={14} />
@@ -452,11 +390,9 @@ const StopButton = memo(PureStopButton);
 function PureSendButton({
   submitForm,
   input,
-  uploadQueue,
 }: {
   submitForm: () => void;
   input: string;
-  uploadQueue: Array<string>;
 }) {
   return (
     <Button
@@ -466,7 +402,7 @@ function PureSendButton({
         event.preventDefault();
         submitForm();
       }}
-      disabled={input.trim().length === 0 || uploadQueue.length > 0} // Check input.trim()
+      disabled={input.trim().length === 0}
     >
       <ArrowUpIcon size={14} />
     </Button>
@@ -474,8 +410,6 @@ function PureSendButton({
 }
 
 const SendButton = memo(PureSendButton, (prevProps, nextProps) => {
-  if (prevProps.uploadQueue.length !== nextProps.uploadQueue.length)
-    return false;
   if (prevProps.input !== nextProps.input) return false;
   return true;
 });

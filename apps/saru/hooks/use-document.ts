@@ -1,12 +1,11 @@
 "use client";
 
-import useSWR from "swr";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { generateUUID } from "@/lib/utils";
 import { useSidebar } from "@/components/ui/sidebar";
-import { mutate as globalMutate } from 'swr';
+import { mutate as globalMutate } from "swr";
 
 export interface CurrentDocument {
   documentId: string;
@@ -39,12 +38,49 @@ interface DeleteDocumentParams {
   redirectUrl?: string;
 }
 
-export function useDocument() {
-  const { data, mutate } = useSWR<CurrentDocument>("current-document", null, {
-    fallbackData: initialDocument,
-  });
+type DocumentUpdater = CurrentDocument | ((prev: CurrentDocument) => CurrentDocument);
 
-  const document = data ?? initialDocument;
+let documentState: CurrentDocument = initialDocument;
+const documentListeners = new Set<() => void>();
+
+const getDocumentSnapshot = () => documentState;
+const subscribeToDocument = (listener: () => void) => {
+  documentListeners.add(listener);
+  return () => {
+    documentListeners.delete(listener);
+  };
+};
+
+const updateDocumentState = (updater: DocumentUpdater) => {
+  const previous = documentState;
+  const next =
+    typeof updater === "function"
+      ? (updater as (prev: CurrentDocument) => CurrentDocument)(previous)
+      : updater;
+
+  if (!next) {
+    return;
+  }
+
+  if (
+    previous.documentId === next.documentId &&
+    previous.title === next.title &&
+    previous.content === next.content &&
+    previous.status === next.status
+  ) {
+    return;
+  }
+
+  documentState = next;
+  documentListeners.forEach((listener) => listener());
+};
+
+export function getCurrentDocument(): CurrentDocument {
+  return getDocumentSnapshot();
+}
+
+export function useDocument() {
+  const document = useSyncExternalStore(subscribeToDocument, getDocumentSnapshot, getDocumentSnapshot);
   const router = useRouter();
   const { setOpenMobile, openMobile } = useSidebar();
   const [isCreatingChat, setIsCreatingChat] = useState(false);
@@ -53,9 +89,12 @@ export function useDocument() {
 
   const setDocument = useCallback(
     (update: CurrentDocument | ((prev: CurrentDocument) => CurrentDocument)) => {
-      mutate(prev => (typeof update === "function" ? (update as any)(prev ?? initialDocument) : update), false);
+      updateDocumentState((prev) => {
+        const base = prev ?? initialDocument;
+        return typeof update === "function" ? (update as any)(base) : update;
+      });
     },
-    [mutate]
+    []
   );
 
   const handleResetChat = useCallback(() => {

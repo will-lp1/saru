@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getUser } from '@/app/(auth)/auth';
 import { getDocumentsById } from '@/lib/db/queries';
-import { AlwaysVisibleArtifact } from '@/components/document/document-workspace';
+import { DocumentWorkspace } from '@/components/document/document-workspace';
 import type { Document } from '@saru/db';
 
 export const dynamic = 'auto';
@@ -29,7 +29,7 @@ export default async function DocumentPage(props: { params: Promise<{ id: string
     if (!documents || documents.length === 0) {
       console.log(`[DocumentPage] Document ${documentId} not found for user ${user.id}. Showing create prompt.`);
       return (
-        <AlwaysVisibleArtifact 
+        <DocumentWorkspace 
           chatId="placeholder-for-artifact"
           initialDocumentId="init"
           initialDocuments={[]}
@@ -40,7 +40,7 @@ export default async function DocumentPage(props: { params: Promise<{ id: string
     }
     
     return (
-      <AlwaysVisibleArtifact 
+      <DocumentWorkspace 
         chatId="placeholder-for-artifact"
         initialDocumentId={documentId}
         initialDocuments={documents}

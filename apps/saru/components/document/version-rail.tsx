@@ -241,7 +241,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
   return (
     <div className="w-full">
       <div
-        className={`w-full border-b bg-background transition-all duration-200 group ${isViewingHistory ? 'h-12' : 'hover:h-12 h-1'}`}
+        className="relative z-10 w-full py-4 -my-4 hover-trigger group"
         onPointerLeave={handlePointerLeave}
         onPointerMove={handlePointerMove}
         onPointerDown={handlePointerDown}
@@ -251,8 +251,11 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
           handleClickArea(e as any);
         }}
       >
-      <Slider.Root
-        className="relative w-full h-full flex items-center"
+        <div
+          className={`w-full border-b bg-background transition-all duration-200 ease-out-cubic ${isViewingHistory ? 'h-12' : 'group-hover:h-12 group-hover:bg-muted/5 h-1'}`}
+        >
+        <Slider.Root
+         className="relative w-full h-full flex items-center"
         value={[selectedIndex ?? currentIndex]}
         max={versions.length-1}
         step={1}
@@ -288,9 +291,9 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
           </ResponsiveContainer>
           
           {isViewingHistory && (
-            <div 
-              className="absolute top-0 h-full w-0.5 bg-blue-500 shadow-lg"
-              style={{ 
+            <div
+              className="absolute top-0 h-full w-0.5 bg-blue-500 shadow-lg transition-all duration-300 ease-out-cubic"
+              style={{
                 left: `${((selectedIndex || 0) / (versions.length - 1)) * 100}%`,
                 transform: 'translateX(-50%)'
               }}
@@ -299,6 +302,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
         </Slider.Track>
         <Slider.Thumb className="hidden" />
       </Slider.Root>
+        </div>
       </div>
 
       {isViewingHistory && (
@@ -307,7 +311,7 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
             variant="ghost"
             size="sm"
             onClick={goToLatest}
-            className="h-7 px-3 text-xs"
+            className="h-7 px-3 text-xs transition-all duration-200 ease-out hover:bg-accent hover:text-accent-foreground"
           >
             Return to latest
           </Button>

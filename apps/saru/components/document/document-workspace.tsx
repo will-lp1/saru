@@ -37,7 +37,7 @@ const EditorSkeleton = () => (
   </div>
 );
 
-type AlwaysVisibleArtifactProps = {
+type DocumentWorkspaceProps = {
   chatId: string;
   initialDocumentId: string;
   initialDocuments: Document[];
@@ -45,14 +45,13 @@ type AlwaysVisibleArtifactProps = {
   user: User;
 };
 
-
-export function AlwaysVisibleArtifact({
+export function DocumentWorkspace({
   chatId,
   initialDocumentId,
   initialDocuments = [],
   showCreateDocumentForId,
   user
-}: AlwaysVisibleArtifactProps) {
+}: DocumentWorkspaceProps) {
   const router = useRouter();
   const [saveState, setSaveState] = useState<SaveStatus>('idle');
   const { document, setDocument } = useDocument();
@@ -223,6 +222,10 @@ export function AlwaysVisibleArtifact({
       return null;
   }, [documents]);
 
+  const latestDocumentId = latestDocument?.id ?? null;
+  const latestDocumentTitle = latestDocument?.title ?? null;
+  const latestDocumentContent = latestDocument?.content ?? null;
+
   useEffect(() => {
     const docs = initialDocuments || [];
     setDocuments(docs);
@@ -233,23 +236,97 @@ export function AlwaysVisibleArtifact({
     const docToUse = docs[initialIndex];
 
     if (docToUse) {
-      setDocument({
-        documentId: docToUse.id,
-        title: docToUse.title,
-        content: docToUse.content ?? '',
-        status: 'idle',
+      setDocument((current) => {
+        if (current.documentId === docToUse.id) {
+          const nextTitle = docToUse.title ?? current.title;
+          if (nextTitle === current.title) {
+            return current;
+          }
+
+          return {
+            ...current,
+            title: nextTitle,
+          };
+        }
+
+        return {
+          documentId: docToUse.id,
+          title: docToUse.title ?? 'Document',
+          content: docToUse.content ?? '',
+          status: 'idle',
+        };
       });
-      setNewTitle(docToUse.title);
+      setNewTitle(docToUse.title ?? 'Document');
     } else if (initialDocumentId === 'init' || showCreateDocumentForId) {
-      setDocument({
-        documentId: 'init',
-        title: 'Document',
-        content: '',
-        status: 'idle',
+      setDocument((current) => {
+        if (current.documentId === 'init') {
+          return current;
+        }
+
+        return {
+          documentId: 'init',
+          title: 'Document',
+          content: '',
+          status: 'idle',
+        };
       });
       setNewTitle('Document');
     }
-  }, []);
+  }, [initialDocuments, initialDocumentId, showCreateDocumentForId, setDocument]);
+
+  useEffect(() => {
+    if (showCreateDocumentForId) {
+      setDocument((current) => {
+        if (current.documentId === 'init') {
+          return current;
+        }
+
+        return {
+          documentId: 'init',
+          title: 'Document',
+          content: '',
+          status: 'idle',
+        };
+      });
+
+      if (!editingTitle) {
+        setNewTitle('Document');
+      }
+      return;
+    }
+
+    if (!latestDocumentId) {
+      return;
+    }
+
+    setDocument((current) => {
+      const shouldUpdateId = current.documentId !== latestDocumentId;
+      const shouldUpdateTitle = (latestDocumentTitle ?? 'Document') !== (current.title ?? '');
+
+      if (!shouldUpdateId && !shouldUpdateTitle) {
+        return current;
+      }
+
+      return {
+        documentId: latestDocumentId,
+        title: latestDocumentTitle ?? current.title ?? 'Document',
+        content: shouldUpdateId ? latestDocumentContent ?? '' : current.content,
+        status: shouldUpdateId ? 'idle' : current.status,
+      };
+    });
+
+    if (!editingTitle && latestDocumentTitle && latestDocumentTitle !== newTitle) {
+      setNewTitle(latestDocumentTitle);
+    }
+  }, [
+    editingTitle,
+    latestDocumentContent,
+    latestDocumentId,
+    latestDocumentTitle,
+    newTitle,
+    setDocument,
+    showCreateDocumentForId,
+  ]);
 
   // Removed automatic navigation to latest document for a smoother, predictable UX. Users now stay on the /documents page unless they explicitly select or create a document.
 
@@ -541,6 +618,29 @@ export function AlwaysVisibleArtifact({
     );
   }
 
+  if (initialDocumentId === 'init' && versionsLoading) {
+    return (
+      <div className="flex flex-col h-dvh bg-background">
+        <div className="flex justify-between items-center border-b px-3 h-[45px]">
+          <SidebarTrigger />
+        </div>
+
+        <div className="flex flex-col items-center justify-center h-full gap-8 px-4 text-muted-foreground">
+          <Card className="w-44 h-32 sm:w-52 sm:h-36 md:w-56 md:h-40 border border-border shadow-sm overflow-hidden bg-background">
+            <div className="h-5 bg-muted flex items-center px-2 text-[9px] text-muted-foreground/80 font-mono gap-1">
+              <Skeleton className="h-2.5 w-3/5" />
+            </div>
+            <div className="p-3 space-y-1">
+              <Skeleton className="h-2.5 w-2/3" />
+              <Skeleton className="h-2.5 w-full" />
+              <Skeleton className="h-2.5 w-5/6" />
+            </div>
+          </Card>
+          </div>
+        </div>
+    );
+  }
+
   if (
     initialDocumentId === 'init' &&
     !versionsLoading &&
@@ -554,7 +654,7 @@ export function AlwaysVisibleArtifact({
         </div>
 
         <div className="flex flex-col items-center justify-center h-full gap-8 px-4 text-muted-foreground">
-          <Card className="w-44 h-32 sm:w-52 sm:h-36 md:w-56 md:h-40 border border-border shadow-sm overflow-hidden bg-background">
+          <Card className="w-44 h-32 sm:w-52 sm:h-36 md:w-56 md:h-40 border border-border shadow-sm overflow-hidden bg-background animate-in slide-in-from-bottom-4 fade-in-0 duration-200">
             <div className="h-5 bg-muted flex items-center px-2 text-[9px] text-muted-foreground/80 font-mono gap-1">
               <Skeleton className="h-2.5 w-3/5" />
             </div>

@@ -1,19 +1,18 @@
-import { Message } from 'ai';
+import { UIMessage } from 'ai';
 import { PreviewMessage, ThinkingMessage } from './message';
-import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
 import { Overview } from './overview';
-import { memo } from 'react';
-import equal from 'fast-deep-equal';
+import { Dispatch, memo, RefObject, SetStateAction, useEffect } from 'react';
 import { UseChatHelpers } from '@ai-sdk/react';
 
 interface MessagesProps {
   chatId: string;
-  status: UseChatHelpers['status'];
-  messages: Array<Message>;
-  setMessages: UseChatHelpers['setMessages'];
-  reload: UseChatHelpers['reload'];
+  status: UseChatHelpers<UIMessage>['status'];
+  messages: Array<UIMessage>;
+  setMessages: Dispatch<SetStateAction<Array<UIMessage>>>;
+  regenerate: UseChatHelpers<UIMessage>['regenerate'];
   isReadonly: boolean;
   isArtifactVisible: boolean;
+  messagesEndRef: RefObject<HTMLDivElement>;
 }
 
 function PureMessages({
@@ -21,16 +20,44 @@ function PureMessages({
   status,
   messages,
   setMessages,
-  reload,
+  regenerate,
   isReadonly,
+  messagesEndRef,
 }: MessagesProps) {
-  const [messagesContainerRef, messagesEndRef] =
-    useScrollToBottom<HTMLDivElement>();
+  useEffect(() => {
+    const handleToolResult = (event: CustomEvent) => {
+      const { toolCallId, result: updatedResult } = event.detail;
+
+      setMessages(prevMessages =>
+        prevMessages.map(message => {
+          if (message.role === 'assistant' && message.parts) {
+            const updatedParts = message.parts.map(part => {
+              if (part.type?.startsWith('tool-') && 'toolCallId' in part && part.toolCallId === toolCallId) {
+                return {
+                  ...part,
+                  output: updatedResult,
+                };
+              }
+              return part;
+            });
+
+            return {
+              ...message,
+              parts: updatedParts,
+            };
+          }
+          return message;
+        })
+      );
+    };
+
+    window.addEventListener('tool-result', handleToolResult as EventListener);
+    return () => window.removeEventListener('tool-result', handleToolResult as EventListener);
+  }, [setMessages]);
 
   return (
     <div
-      ref={messagesContainerRef}
-      className="flex flex-col min-w-0 gap-6 flex-1 overflow-y-scroll pt-4"
+      className="flex flex-col min-w-0 gap-6 pt-4"
     >
       {messages.length === 0 && <Overview />}
 
@@ -40,9 +67,10 @@ function PureMessages({
             key={message.id}
             chatId={chatId}
             message={message}
+            messages={messages}
             isLoading={status === 'streaming' && messages.length - 1 === index}
             setMessages={setMessages}
-            reload={reload}
+            regenerate={regenerate}
             isReadonly={isReadonly}
           />
         );
@@ -60,12 +88,4 @@ function PureMessages({
   );
 }
 
-export const Messages = memo(PureMessages, (prevProps, nextProps) => {
-  if (prevProps.isArtifactVisible && nextProps.isArtifactVisible) return true;
-
-  if (prevProps.status !== nextProps.status) return false;
-  if (prevProps.status && nextProps.status) return false;
-  if (prevProps.messages.length !== nextProps.messages.length) return false;
-  if (!equal(prevProps.messages, nextProps.messages)) return false;
-  return true;
-});
+export const Messages = memo(PureMessages, () => false);

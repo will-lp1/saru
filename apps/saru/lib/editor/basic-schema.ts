@@ -26,7 +26,20 @@ const diffMarkSpec = {
   },
 };
 
-const nodes = addListNodes(basicSchema.spec.nodes, 'paragraph block*', 'block');
+let nodes = addListNodes(basicSchema.spec.nodes, 'paragraph block*', 'block');
+
+const codeBlockSpec = nodes.get('code_block');
+if (codeBlockSpec) {
+  const existingMarks = typeof codeBlockSpec.marks === 'string' ? codeBlockSpec.marks.trim() : '';
+  if (existingMarks === '_') {
+    // All marks already permitted; no update required.
+  } else {
+    const marksSet = existingMarks ? new Set(existingMarks.split(/\s+/)) : new Set<string>();
+    marksSet.add('diffMark');
+    const marks = Array.from(marksSet).join(' ').trim();
+    nodes = nodes.update('code_block', { ...codeBlockSpec, marks });
+  }
+}
 
 const marks = OrderedMap.from({
   ...basicSchema.spec.marks.toObject(),

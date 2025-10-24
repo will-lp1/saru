@@ -1,6 +1,6 @@
 'use server';
 
-import { generateText, Message } from 'ai';
+import { generateText, UIMessage } from 'ai';
 import { cookies } from 'next/headers';
 
 import {
@@ -21,7 +21,7 @@ export async function saveChatModelAsCookie(model: string) {
 export async function generateTitleFromUserMessage({
   message,
 }: {
-  message: Message;
+  message: UIMessage;
 }) {
   const { text: title } = await generateText({
     model: myProvider.languageModel('title-model'),
@@ -37,12 +37,21 @@ export async function generateTitleFromUserMessage({
 }
 
 export async function deleteTrailingMessages({ id }: { id: string }) {
-  const message = await getMessageById({ id });
+  try {
+    const message = await getMessageById({ id });
 
-  if (message) {
-    await deleteMessagesByChatIdAfterTimestamp({
-      chatId: message.chatId,
-      timestamp: message.createdAt,
-    });
+    if (message) {
+      await deleteMessagesByChatIdAfterTimestamp({
+        chatId: message.chatId,
+        timestamp: message.createdAt,
+      });
+    } else {
+      console.warn(
+        '[Chat Actions] deleteTrailingMessages: message not found, skipping delete',
+        { id }
+      );
+    }
+  } catch (error) {
+    console.warn('Failed to delete trailing messages by ID, skipping:', error);
   }
-} 
+}

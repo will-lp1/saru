@@ -1,8 +1,11 @@
 import {
-  type Message,
-  createDataStreamResponse,
+  type UIMessage,
   streamText,
   smoothStream,
+  stepCountIs,
+  convertToModelMessages,
+  createUIMessageStream,
+  JsonToSseTransformStream,
 } from 'ai';
 import { systemPrompt } from '@/lib/ai/prompts';
 import {
@@ -12,26 +15,26 @@ import {
   saveMessages,
   getDocumentById,
   getMessagesByChatId,
+  getMessageById,
   updateChatContextQuery,
+  deleteMessagesAfterMessageId,
 } from '@/lib/db/queries';
 import {
   generateUUID,
   getMostRecentUserMessage,
-  sanitizeResponseMessages,
-  parseMessageContent,
   convertToUIMessages,
+  convertUIMessageToDBFormat,
 } from '@/lib/utils';
 import { generateTitleFromUserMessage } from '@/app/api/chat/actions/chat';
 import { updateDocument } from '@/lib/ai/tools/update-document';
 import { streamingDocument } from '@/lib/ai/tools/document-streaming';
-import { isProductionEnvironment } from '@/lib/constants';
 import { NextResponse } from 'next/server';
 import { myProvider } from '@/lib/ai/providers';
 import { auth } from "@/lib/auth";
 import { headers } from 'next/headers';
 import type { Document } from '@saru/db';
-import { createDocument as aiCreateDocument } from '@/lib/ai/tools/create-document';
 import { webSearch } from '@/lib/ai/tools/web-search';
+import type { ActiveDocumentId, ChatContextPayload, ChatAiOptions } from '@/types/chat';
 
 export const maxDuration = 60;
 
@@ -42,15 +45,15 @@ async function createEnhancedSystemPrompt({
   customInstructions,
   writingStyleSummary,
   applyStyle,
-  availableTools = ['createDocument','streamingDocument','updateDocument','webSearch'] as Array<'createDocument'|'streamingDocument'|'updateDocument'|'webSearch'>,
+  availableTools = ['streamingDocument','updateDocument','webSearch'] as Array<'streamingDocument'|'updateDocument'|'webSearch'>,
 }: {
   selectedChatModel: string;
-  activeDocumentId?: string | null;
+  activeDocumentId?: ActiveDocumentId;
   mentionedDocumentIds?: string[] | null;
   customInstructions?: string | null;
   writingStyleSummary?: string | null;
   applyStyle?: boolean;
-  availableTools?: Array<'createDocument'|'streamingDocument'|'updateDocument'|'webSearch'>;
+  availableTools?: Array<'streamingDocument'|'updateDocument'|'webSearch'>;
 }) {
 
   let basePrompt = systemPrompt({ selectedChatModel, availableTools });
@@ -164,30 +167,29 @@ export async function POST(request: Request) {
     
     const userId = session.user.id;
 
+    type ChatRequestData = ChatContextPayload & Record<string, unknown>;
+
+    interface ChatRequestBody {
+      id: string;
+      chatId: string;
+      messages: Array<UIMessage>;
+      selectedChatModel: string;
+      data?: ChatRequestData;
+      aiOptions?: ChatAiOptions | null;
+      trailingMessageId?: string;
+    }
+
     const {
-      id: chatId,
+      id: requestId,
+      chatId,
       messages,
       selectedChatModel,
       data: requestData,
       aiOptions,
-    }: {
-      id: string;
-      messages: Array<Message>;
-      selectedChatModel: string;
-      data?: { 
-        activeDocumentId?: string | null;
-        mentionedDocumentIds?: string[] | null;
-        [key: string]: any; 
-      };
-      aiOptions?: {
-        customInstructions?: string | null;
-        suggestionLength?: 'short' | 'medium' | 'long';
-        writingStyleSummary?: string | null;
-        applyStyle?: boolean;
-      } | null;
-    } = await request.json();
+      trailingMessageId,
+    }: ChatRequestBody = await request.json();
 
-    const activeDocumentId = requestData?.activeDocumentId ?? undefined;
+    const activeDocumentId: ActiveDocumentId = requestData?.activeDocumentId ?? null;
     const mentionedDocumentIds = requestData?.mentionedDocumentIds ?? undefined;
     const customInstructions = aiOptions?.customInstructions ?? null;
     const suggestionLength = aiOptions?.suggestionLength ?? 'medium';
@@ -195,7 +197,6 @@ export async function POST(request: Request) {
     const applyStyle = aiOptions?.applyStyle ?? true;
 
     const userMessage = getMostRecentUserMessage(messages);
-
     if (!userMessage) {
       return new Response('No user message found', { status: 400 });
     }
@@ -214,7 +215,7 @@ export async function POST(request: Request) {
         userId: userId,
         title,
         document_context: {
-          active: activeDocumentId,
+          active: activeDocumentId || undefined,
           mentioned: mentionedDocumentIds
         }
       });
@@ -227,30 +228,37 @@ export async function POST(request: Request) {
         chatId, 
         userId,
         context: {
-          active: activeDocumentId,
+          active: activeDocumentId || undefined,
           mentioned: mentionedDocumentIds
         }
       });
     }
 
-    const userMessageBackendId = generateUUID();
 
-    await saveMessages({
-      messages: [{
-        id: userMessageBackendId,
-        chatId: chatId,
-        role: userMessage.role,
-        content: parseMessageContent(userMessage.content),
-        createdAt: new Date().toISOString(),
-      }],
-    });
+    const existingUserMessage = await getMessageById({ id: userMessage.id });
+    if (!existingUserMessage) {
+      await saveMessages({
+        messages: [{
+          id: userMessage.id,
+          chatId: chatId,
+          role: userMessage.role,
+          content: { parts: userMessage.parts },
+          createdAt: new Date().toISOString(),
+        }],
+      });
+    }
+
+    if (trailingMessageId) {
+      await deleteMessagesAfterMessageId({ chatId, messageId: trailingMessageId });
+    }
 
     const toolSession = session;
     if (!toolSession) {
       return new Response('Internal Server Error', { status: 500 });
     }
 
-    let validatedActiveDocumentId: string | undefined;
+
+    let validatedActiveDocumentId: string | null = null;
     let activeDoc: Document | null = null;
     if (activeDocumentId && uuidRegex.test(activeDocumentId)) {
         try {
@@ -263,98 +271,104 @@ export async function POST(request: Request) {
       }
     }
 
-    return createDataStreamResponse({
-      execute: async (dataStream) => {
-        const availableTools: any = {};
-        const activeToolsList: Array<'createDocument' | 'streamingDocument' | 'updateDocument' | 'webSearch'> = [];
+    // Set up tools based on document state
+    const availableTools: any = {};
+    const activeToolsList: Array<'streamingDocument' | 'updateDocument' | 'webSearch'> = [];
 
-        if (!validatedActiveDocumentId) {
-          availableTools.createDocument = aiCreateDocument({ session: toolSession, dataStream });
-          availableTools.streamingDocument = streamingDocument({ session: toolSession, dataStream });
-          activeToolsList.push('createDocument', 'streamingDocument');
-        } else if ((activeDoc?.content?.length ?? 0) === 0) {
-          availableTools.streamingDocument = streamingDocument({ session: toolSession, dataStream });
-          activeToolsList.push('streamingDocument');
-        } else {
-          availableTools.updateDocument = updateDocument({ session: toolSession, documentId: validatedActiveDocumentId });
-          activeToolsList.push('updateDocument');
-        }
+    const activeDocumentContent = activeDoc?.content ?? '';
+    const isActiveDocumentEmpty = activeDocumentContent.trim().length === 0;
 
-        if (process.env.TAVILY_API_KEY) {
-          availableTools.webSearch = webSearch({ session: toolSession });
-          activeToolsList.push('webSearch');
-        }
+    if (!validatedActiveDocumentId) {
+      // No active document - only allow streaming document for new content generation
+      availableTools.streamingDocument = streamingDocument({ session: toolSession });
+      activeToolsList.push('streamingDocument');
+    } else {
+      availableTools.updateDocument = updateDocument({
+        session: toolSession,
+        documentId: validatedActiveDocumentId,
+      });
+      activeToolsList.push('updateDocument');
 
-        const dynamicSystemPrompt = await createEnhancedSystemPrompt({
-          selectedChatModel,
-          activeDocumentId,
-          mentionedDocumentIds,
-          customInstructions,
-          writingStyleSummary,
-          applyStyle,
-          availableTools: activeToolsList,
+      if (isActiveDocumentEmpty) {
+        availableTools.streamingDocument = streamingDocument({
+          session: toolSession,
+          documentId: validatedActiveDocumentId,
         });
+        activeToolsList.push('streamingDocument');
+      }
+    }
+
+    if (process.env.TAVILY_API_KEY) {
+      availableTools.webSearch = webSearch({ session: toolSession });
+      activeToolsList.push('webSearch');
+    }
+
+    const dynamicSystemPrompt = await createEnhancedSystemPrompt({
+      selectedChatModel,
+      activeDocumentId,
+      mentionedDocumentIds,
+      customInstructions,
+      writingStyleSummary,
+      applyStyle,
+      availableTools: activeToolsList,
+    });
+
+    const stream = createUIMessageStream({
+      execute: ({ writer: dataStream }) => {
+        const toolsWithStream: any = { ...availableTools };
+        if (toolsWithStream.streamingDocument) {
+          toolsWithStream.streamingDocument = streamingDocument({
+            session: toolSession,
+            dataStream,
+            documentId: validatedActiveDocumentId ?? undefined,
+          });
+        }
 
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: dynamicSystemPrompt,
-          messages,
-          maxSteps: 2,
-          toolCallStreaming: true,
+          messages: convertToModelMessages(messages),
+          stopWhen: stepCountIs(2),
           experimental_activeTools: activeToolsList,
-          experimental_generateMessageId: generateUUID,
-          experimental_transform: smoothStream({
-            chunking: 'word',
-          }),
-          tools: availableTools,
-          onFinish: async ({ response, reasoning }) => {
-            if (userId) {
-              try {
-                const sanitizedResponseMessages = sanitizeResponseMessages({
-                  messages: response.messages,
-                  reasoning,
-                });
-
-                await saveMessages({
-                  messages: sanitizedResponseMessages.map((message) => ({
-                    id: message.id,
-                    chatId: chatId,
-                    role: message.role,
-                    content: parseMessageContent(message.content),
-                    createdAt: new Date().toISOString(),
-                  })),
-                });
-                
-                await updateChatContextQuery({ 
-                  chatId, 
-                  userId,
-                  context: {
-                    active: activeDocumentId,
-                    mentioned: mentionedDocumentIds
-                  }
-                });
-              } catch (error) {
-                console.error('Failed to save chat/messages onFinish:', error);
-              }
-            }
-          },
-          experimental_telemetry: {
-            isEnabled: isProductionEnvironment,
-            functionId: 'stream-text',
-          },
+          experimental_transform: smoothStream({ chunking: 'word' }),
+          tools: toolsWithStream,
         });
 
         result.consumeStream();
-
-        result.mergeIntoDataStream(dataStream, {
-          sendReasoning: true,
-        });
+        dataStream.merge(result.toUIMessageStream({ sendReasoning: true }));
       },
-      onError: (error) => {
-        console.error('Stream error:', error);
-        return 'Sorry, something went wrong. Please try again.';
+      generateId: generateUUID,
+      onFinish: async ({ messages: allMessages }) => {
+        if (userId) {
+          try {
+            const assistant = allMessages.find((m) => m.role === 'assistant') ?? allMessages[allMessages.length - 1];
+            if (assistant) {
+              const dbMessage = convertUIMessageToDBFormat(assistant, chatId);
+              await saveMessages({ messages: [dbMessage] });
+            }
+            await updateChatContextQuery({
+              chatId,
+              userId,
+              context: {
+                active: activeDocumentId || undefined,
+                mentioned: mentionedDocumentIds,
+              },
+            });
+          } catch (error) {
+            console.error('Failed to save chat/messages onFinish:', error);
+          }
+        }
+      },
+      onError: () => 'Oops, an error occurred!',
+    });
+
+    return new Response(stream.pipeThrough(new JsonToSseTransformStream()), {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
       },
     });
+
   } catch (error) {
     console.error('Chat route error:', error);
     return NextResponse.json({ error }, { status: 400 });

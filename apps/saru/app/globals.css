@@ -6,6 +6,96 @@
     .text-balance {
         text-wrap: balance;
     }
+
+    .ease-out-quad {
+        transition-timing-function: cubic-bezier(.25, .46, .45, .94);
+    }
+
+    .ease-out-cubic {
+        transition-timing-function: cubic-bezier(.215, .61, .355, 1);
+    }
+
+    .ease-out-quart {
+        transition-timing-function: cubic-bezier(.165, .84, .44, 1);
+    }
+
+    .ease-out-quint {
+        transition-timing-function: cubic-bezier(.23, 1, .32, 1);
+    }
+
+    .ease-out-expo {
+        transition-timing-function: cubic-bezier(.19, 1, .22, 1);
+    }
+
+    .ease-out-circ {
+        transition-timing-function: cubic-bezier(.075, .82, .165, 1);
+    }
+
+    .ease-in-out-quad {
+        transition-timing-function: cubic-bezier(.455, .03, .515, .955);
+    }
+
+    .ease-in-out-cubic {
+        transition-timing-function: cubic-bezier(.645, .045, .355, 1);
+    }
+
+    .ease-in-out-quart {
+        transition-timing-function: cubic-bezier(.77, 0, .175, 1);
+    }
+
+    .ease-in-out-quint {
+        transition-timing-function: cubic-bezier(.86, 0, .07, 1);
+    }
+
+    .ease-in-out-expo {
+        transition-timing-function: cubic-bezier(1, 0, 0, 1);
+    }
+
+    .ease-in-out-circ {
+        transition-timing-function: cubic-bezier(.785, .135, .15, .86);
+    }
+
+    /* Respect reduced motion preferences */
+    @media (prefers-reduced-motion: reduce) {
+        .ease-out-quad,
+        .ease-out-cubic,
+        .ease-out-quart,
+        .ease-out-quint,
+        .ease-out-expo,
+        .ease-out-circ,
+        .ease-in-out-quad,
+        .ease-in-out-cubic,
+        .ease-in-out-quart,
+        .ease-in-out-quint,
+        .ease-in-out-expo,
+        .ease-in-out-circ {
+            transition-timing-function: ease !important;
+        }
+    }
+
+    .touch-hitbox {
+        position: relative;
+    }
+
+    .touch-hitbox::before {
+        content: "";
+        position: absolute;
+        display: block;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 100%;
+        height: 100%;
+        min-height: 44px;
+        min-width: 44px;
+        z-index: 9999;
+    }
+
+    @media (hover: none) and (pointer: coarse) {
+        .hover-trigger:hover * {
+            transition-duration: 0ms !important;
+        }
+    }
 }
 
 @layer base {
