@@ -23,7 +23,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 const SkeletonMessage = ({ role }: { role: 'user' | 'assistant' }) => (
   <motion.div
-    className="w-full mx-auto max-w-3xl px-4 group/message"
+    className={cn(
+      "w-full mx-auto max-w-3xl px-4 group/message",
+      role === 'user' && "flex justify-end"
+    )}
     initial={{ opacity: 0, y: 10 }}
     animate={{ opacity: 1, y: 0 }}
     exit={{ opacity: 0, y: -10 }}
@@ -32,18 +35,13 @@ const SkeletonMessage = ({ role }: { role: 'user' | 'assistant' }) => (
   >
     <div
       className={cn(
-        "flex gap-4 group-data-[role=user]/message:px-3 w-full group-data-[role=user]/message:w-fit group-data-[role=user]/message:ml-auto group-data-[role=user]/message:max-w-2xl group-data-[role=user]/message:py-2 rounded-xl",
-        {
-          "group-data-[role=user]/message:bg-muted": true,
-        }
+        "flex gap-4 w-full max-w-2xl",
+        role === 'user' && "bg-muted px-3 py-2 rounded-xl w-fit ml-auto",
+        role === 'assistant' && "px-0"
       )}
     >
-      <div className="size-8 flex items-center justify-center rounded-full ring-1 shrink-0 ring-border overflow-hidden relative">
-        {role === 'assistant' ? (
-          <Skeleton className="size-8 rounded-full" />
-        ) : (
-          <Skeleton className="size-8 rounded-full" />
-        )}
+      <div className="size-8 flex items-center justify-center rounded-full ring-1 shrink-0 ring-border overflow-hidden">
+        <Skeleton className="size-8 rounded-full" />
       </div>
 
       <div className="flex flex-col gap-2 w-full">

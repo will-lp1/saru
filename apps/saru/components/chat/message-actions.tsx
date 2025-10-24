@@ -3,7 +3,7 @@ import { memo } from "react";
 import { useCopyToClipboard } from "usehooks-ts";
 import type { UIMessage } from "ai";
 import type { UseChatHelpers } from "@ai-sdk/react";
-import { CopyIcon, PencilEditIcon, RegenerateIcon } from '../icons';
+import { CopyIcon, PencilEditIcon } from '../icons';
 import { Button } from '../ui/button';
 import {
   Tooltip,
@@ -12,7 +12,6 @@ import {
   TooltipTrigger,
 } from '../ui/tooltip';
 import { toast } from 'sonner';
-import { getTrailingMessageId } from '@/lib/utils';
 
 export function PureMessageActions({
   chatId,
@@ -109,30 +108,6 @@ export function PureMessageActions({
           </TooltipTrigger>
           <TooltipContent>Copy</TooltipContent>
         </Tooltip>
-
-        {regenerate && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                className="py-1 px-2 h-fit text-muted-foreground touch-hitbox"
-                variant="outline"
-                onClick={() => {
-                  const trailingMessageId = getTrailingMessageId({ messages });
-                  regenerate({
-                    messageId: message.id,
-                    body: {
-                      regenerateFromMessageId: message.id,
-                      trailingMessageId,
-                    },
-                  });
-                }}
-              >
-                <RegenerateIcon />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Regenerate</TooltipContent>
-          </Tooltip>
-        )}
       </div>
     </TooltipProvider>
   );

@@ -176,7 +176,6 @@ export async function POST(request: Request) {
       selectedChatModel: string;
       data?: ChatRequestData;
       aiOptions?: ChatAiOptions | null;
-      regenerateFromMessageId?: string;
       trailingMessageId?: string;
     }
 
@@ -187,7 +186,6 @@ export async function POST(request: Request) {
       selectedChatModel,
       data: requestData,
       aiOptions,
-      regenerateFromMessageId,
       trailingMessageId,
     }: ChatRequestBody = await request.json();
 
@@ -236,13 +234,6 @@ export async function POST(request: Request) {
       });
     }
 
-    const effectiveMessages = regenerateFromMessageId
-      ? (() => {
-          const index = messages.findIndex((m) => m.id === regenerateFromMessageId);
-          if (index === -1) return messages;
-          return messages.slice(0, index); 
-        })()
-      : messages;
 
     const existingUserMessage = await getMessageById({ id: userMessage.id });
     if (!existingUserMessage) {
@@ -336,7 +327,7 @@ export async function POST(request: Request) {
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: dynamicSystemPrompt,
-          messages: convertToModelMessages(effectiveMessages),
+          messages: convertToModelMessages(messages),
           stopWhen: stepCountIs(2),
           experimental_activeTools: activeToolsList,
           experimental_transform: smoothStream({ chunking: 'word' }),
