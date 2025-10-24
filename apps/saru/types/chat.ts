@@ -4,7 +4,7 @@ import type { updateDocument } from "@/lib/ai/tools/update-document";
 import type { streamingDocument } from "@/lib/ai/tools/document-streaming";
 import type { webSearch } from "@/lib/ai/tools/web-search";
 
-export type ActiveDocumentId = string | null;
+export type ActiveDocumentId = string | undefined;
 
 export interface ChatContextPayload {
   activeDocumentId?: ActiveDocumentId;
