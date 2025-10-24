@@ -90,7 +90,6 @@ export async function saveMessages({ messages }: { messages: Array<typeof schema
         if (typeof msg.content === 'string') {
           finalContent = JSON.stringify([{ type: 'text', content: msg.content, order: 0 }]);
         } else if (typeof msg.content === 'object' && msg.content !== null) {
-           finalContent = JSON.stringify(msg.content);
           finalContent = JSON.stringify(msg.content);
         } else {
           console.warn(`[DB Query - saveMessages] Unexpected message content type for msg ID (if exists) ${msg.id}:`, typeof msg.content);
@@ -157,19 +156,6 @@ export async function getMessagesByChatId({ id }: { id: string }): Promise<Messa
 }
 
 
-export async function getMessagesByIds(ids: string[]): Promise<Message[]> {
-  if (!ids.length) return [];
-
-  try {
-    const data = await db.select()
-      .from(schema.Message)
-      .where(inArray(schema.Message.id, ids));
-    return data;
-  } catch (error) {
-    console.error('Error fetching messages by IDs:', error);
-    throw error;
-  }
-}
 
 
 export async function saveDocument({

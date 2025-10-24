@@ -101,17 +101,6 @@ export function getMostRecentUserMessage(messages: Array<UIMessage>) {
   return userMessages.at(-1);
 }
 
-export function getTrailingMessageId({
-  messages,
-}: {
-  messages: UIMessage[];
-}): string | null {
-  const trailingMessage = messages.at(-1);
-
-  if (!trailingMessage) { return null; }
-
-  return trailingMessage.id;
-}
 
 export function getDocumentTimestampByIndex(
   documents: Document[],
