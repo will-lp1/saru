@@ -128,64 +128,82 @@ export default function Home() {
               <div className="flex flex-col items-center gap-4 md:gap-5">
                 <div className="text-md tracking-tight text-muted-foreground text-center">Used by</div>
                 <div className="max-w-4xl mx-auto w-full">
-              <div className="flex items-center justify-center gap-5 md:gap-6 opacity-80">
+              <div className="flex items-center justify-center gap-3 sm:gap-5 md:gap-6 opacity-80">
+                <Image
+                  src="/images/cornell-logo.svg"
+                  alt="Cornell University logo"
+                  width={64}
+                  height={16}
+                  className="h-4 sm:h-5 w-auto invert dark:invert-0"
+                />
                 <Image
                   src="/images/figma-logo.svg"
                   alt="Figma logo"
                   width={64}
                   height={16}
-                  className="h-5 w-auto invert dark:invert-0"
+                  className="h-4 sm:h-5 w-auto invert dark:invert-0"
                 />
                 <Image
                   src="/images/vercel-logo.svg"
                   alt="Vercel logo"
                   width={64}
                   height={16}
-                  className="h-5 w-auto invert dark:invert-0"
+                  className="h-4 sm:h-5 w-auto invert dark:invert-0"
                 />
                 <Image
                   src="/images/granola-logo.svg"
                   alt="Granola logo"
                   width={64}
                   height={16}
-                  className="h-5 w-auto invert dark:invert-0"
+                  className="h-4 sm:h-7 w-auto invert dark:invert-0"
+                />
+                <Image
+                  src="/images/yale-logo.svg"
+                  alt="Yale University logo"
+                  width={64}
+                  height={16}
+                  className="h-4 sm:h-5 w-auto invert dark:invert-0"
                 />
               </div>
             </div>
                       
-                <div className="flex flex-wrap items-center justify-center gap-2.5 md:gap-3 text-xs">
-                  <Link
-                    href="https://x.com/leerob"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group flex items-center gap-1.5 rounded-full border border-border bg-background px-3 md:px-4 h-8 md:h-10 w-36 md:w-48 justify-start text-xs whitespace-nowrap hover:bg-accent hover:text-accent-foreground transition-colors"
-                  >
-                    <Image
-                      src="/images/leerob.jpg"
-                      alt="Lee Robinson"
-                      width={24}
-                      height={24}
-                      className="size-6 rounded-full object-cover shrink-0"
-                    />
-                    <span className="font-medium">@leerob</span>
-                    <span className="hidden md:inline text-muted-foreground/60">VP DX, Cursor</span>
-                  </Link>
-
+                <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4">
                   <Link
                     href="https://x.com/dps"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group flex items-center gap-1.5 rounded-full border border-border bg-background px-3 md:px-4 h-8 md:h-10 w-36 md:w-48 justify-start text-xs whitespace-nowrap hover:bg-accent hover:text-accent-foreground transition-colors"
+                    className="group flex items-center space-x-2 p-2 bg-background border border-border rounded-full hover:bg-accent hover:text-accent-foreground transition-colors w-24 md:w-auto"
                   >
                     <Image
                       src="/images/dps.jpg"
                       alt="David Singleton"
                       width={24}
                       height={24}
-                      className="size-6 rounded-full object-cover shrink-0"
+                      className="w-5 h-5 rounded-full object-cover shrink-0"
                     />
-                    <span className="font-medium">@dps</span>
-                    <span className="hidden md:inline text-muted-foreground/60">ex-CTO, Stripe</span>
+                    <div className="flex-1 md:flex-initial text-center md:text-left flex flex-col md:flex-row md:items-center md:gap-2 text-xs">
+                      <span className="font-medium text-foreground">@dps</span>
+                      <span className="hidden md:inline text-muted-foreground/60">ex-CTO, Stripe</span>
+                    </div>
+                  </Link>
+
+                  <Link
+                    href="https://x.com/leerob"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex items-center space-x-2 p-2 bg-background border border-border rounded-full hover:bg-accent hover:text-accent-foreground transition-colors w-24 md:w-auto"
+                  >
+                    <Image
+                      src="/images/leerob.jpg"
+                      alt="Lee Robinson"
+                      width={24}
+                      height={24}
+                      className="w-5 h-5 rounded-full object-cover shrink-0"
+                    />
+                    <div className="flex-1 md:flex-initial text-center md:text-left flex flex-col md:flex-row md:items-center md:gap-2 text-xs">
+                      <span className="font-medium text-foreground">@leerob</span>
+                      <span className="hidden md:inline text-muted-foreground/60">VP DX, Cursor</span>
+                    </div>
                   </Link>
                 </div>
               </div>
