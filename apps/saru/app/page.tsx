@@ -128,27 +128,41 @@ export default function Home() {
               <div className="flex flex-col items-center gap-4 md:gap-5">
                 <div className="text-md tracking-tight text-muted-foreground text-center">Used by</div>
                 <div className="max-w-4xl mx-auto w-full">
-              <div className="flex items-center justify-center gap-5 md:gap-6 opacity-80">
+              <div className="flex items-center justify-center gap-3 sm:gap-5 md:gap-6 opacity-80">
+                <Image
+                  src="/images/cornell-logo.svg"
+                  alt="Cornell University logo"
+                  width={64}
+                  height={16}
+                  className="h-4 sm:h-5 w-auto invert dark:invert-0"
+                />
                 <Image
                   src="/images/figma-logo.svg"
                   alt="Figma logo"
                   width={64}
                   height={16}
-                  className="h-5 w-auto invert dark:invert-0"
+                  className="h-4 sm:h-5 w-auto invert dark:invert-0"
                 />
                 <Image
                   src="/images/vercel-logo.svg"
                   alt="Vercel logo"
                   width={64}
                   height={16}
-                  className="h-5 w-auto invert dark:invert-0"
+                  className="h-4 sm:h-5 w-auto invert dark:invert-0"
                 />
                 <Image
                   src="/images/granola-logo.svg"
                   alt="Granola logo"
                   width={64}
                   height={16}
-                  className="h-5 w-auto invert dark:invert-0"
+                  className="h-4 sm:h-7 w-auto invert dark:invert-0"
+                />
+                <Image
+                  src="/images/yale-logo.svg"
+                  alt="Yale University logo"
+                  width={64}
+                  height={16}
+                  className="h-4 sm:h-5 w-auto invert dark:invert-0"
                 />
               </div>
             </div>
