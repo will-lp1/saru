@@ -113,6 +113,39 @@ export async function saveMessages({ messages }: { messages: Array<typeof schema
   }
 }
 
+/**
+ * Parses message content from database format to application format
+ * @param content - The raw content from the database (string or object)
+ * @param messageId - The message ID for error logging
+ * @param source - The source function name for error logging
+ * @returns Parsed content as string or object
+ */
+function parseMessageContent(content: any, messageId: string, source: string): string | object {
+  let parsedContent: string | object = '';
+  try {
+    if (content) {
+      const contentArray = typeof content === 'string'
+        ? JSON.parse(content)
+        : content;
+
+      if (Array.isArray(contentArray) && contentArray.length > 0) {
+        const firstElement = contentArray[0];
+        if (firstElement.type === 'text' && typeof firstElement.content === 'string') {
+          parsedContent = firstElement.content;
+        } else {
+          parsedContent = contentArray;
+        }
+      } else if (typeof contentArray === 'object' && contentArray !== null) {
+        parsedContent = contentArray;
+      }
+    }
+  } catch (e) {
+    console.error(`[DB Query - ${source}] Failed to parse message content for msg ${messageId}:`, e);
+    parsedContent = '[Error parsing content]';
+  }
+  return parsedContent;
+}
+
 export async function getMessagesByChatId({ id }: { id: string }): Promise<Message[]> {
   try {
     const data = await db.select()
@@ -150,8 +183,8 @@ export async function getMessagesByChatId({ id }: { id: string }): Promise<Messa
     });
 
   } catch (error) {
-    console.error('Error fetching messages:', error);
-    return [];
+    console.error('Error fetching message by ID:', error);
+    return null;
   }
 }
 
