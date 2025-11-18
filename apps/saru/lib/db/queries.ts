@@ -155,8 +155,91 @@ export async function getMessagesByChatId({ id }: { id: string }): Promise<Messa
   }
 }
 
+export async function getMessageById({ id }: { id: string }): Promise<Message | null> {
+  try {
+    const data = await db.select()
+      .from(schema.Message)
+      .where(eq(schema.Message.id, id))
+      .limit(1);
 
+    if (!data || data.length === 0) {
+      return null;
+    }
 
+    const message = data[0];
+    let parsedContent: string | object = '';
+    try {
+      if (message.content) {
+        const contentArray = typeof message.content === 'string'
+          ? JSON.parse(message.content)
+          : message.content;
+
+        if (Array.isArray(contentArray) && contentArray.length > 0) {
+          const firstElement = contentArray[0];
+          if (firstElement.type === 'text' && typeof firstElement.content === 'string') {
+            parsedContent = firstElement.content;
+          } else {
+            parsedContent = contentArray;
+          }
+        } else if (typeof contentArray === 'object' && contentArray !== null) {
+          parsedContent = contentArray;
+        }
+      }
+    } catch (e) {
+      console.error(`[DB Query - getMessageById] Failed to parse message content for msg ${message.id}:`, e);
+      parsedContent = '[Error parsing content]';
+    }
+
+    return {
+      ...message,
+      content: parsedContent as any,
+    };
+  } catch (error) {
+    console.error('Error fetching message by ID:', error);
+    return null;
+  }
+}
+
+export async function updateToolMetadata({
+  messageId,
+  toolCallId,
+  applied,
+  rejected,
+}: {
+  messageId: string;
+  toolCallId: string;
+  applied: boolean;
+  rejected: boolean;
+}): Promise<void> {
+  try {
+    const message = await getMessageById({ id: messageId });
+    if (!message) throw new Error('Message not found');
+
+    const contentObj = typeof message.content === 'string'
+      ? JSON.parse(message.content)
+      : message.content;
+
+    if (contentObj.parts) {
+      contentObj.parts = contentObj.parts.map((part: any) => {
+        if (part.toolCallId === toolCallId) {
+          return {
+            ...part,
+            output: { ...part.output, applied, rejected },
+          };
+        }
+        return part;
+      });
+    }
+
+    await db
+      .update(schema.Message)
+      .set({ content: JSON.stringify(contentObj) })
+      .where(eq(schema.Message.id, messageId));
+  } catch (error) {
+    console.error('Error updating tool metadata:', error);
+    throw error;
+  }
+}
 
 export async function saveDocument({
   id,
@@ -480,20 +563,6 @@ export async function deleteDocumentsByIdAfterTimestamp({
   } catch (error) {
     console.error('Error deleting documents:', error);
     throw error;
-  }
-}
-
-export async function getMessageById({ id }: { id: string }): Promise<Message | null> { // Return null if not found
-  try {
-    const data = await db.select()
-      .from(schema.Message)
-      .where(eq(schema.Message.id, id))
-      .limit(1);
-
-    return data[0] || null;
-  } catch (error) {
-    console.error('Error fetching message by ID:', error);
-    throw error; 
   }
 }
 
