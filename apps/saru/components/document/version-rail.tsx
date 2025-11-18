@@ -69,13 +69,19 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
     });
   },[versions]);
   React.useEffect(() => {
-    if (currentIndex === versions.length - 1) {
-      setSelectedIndex(currentIndex);
-    } else {
-      setSelectedIndex(currentIndex);
-    }
-  }, [currentIndex, versions.length]);
-  
+    setSelectedIndex(currentIndex);
+  }, [currentIndex]);
+
+  React.useEffect(() => {
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent('cancel-document-update', {
+          detail: { documentId: baseDocumentId },
+        })
+      );
+    };
+  }, [baseDocumentId]);
+
   const isViewingHistory = selectedIndex !== null && selectedIndex < versions.length - 1;
   if (isLoading || versions.length <= 1) {
     return <div className="w-full border-b bg-background h-1 group-hover:h-12 transition-all duration-200" />;
@@ -191,24 +197,22 @@ export function VersionRail({ versions, currentIndex, onIndexChange, baseDocumen
 
   const handlePointerLeave = () => {
     setPressStart(null);
-    if (hoverIndex !== null) {
-      if (isViewingHistory && selectedIndex !== null && selectedIndex < versions.length - 1) {
-        const v = versions[selectedIndex];
-        window.dispatchEvent(
-          new CustomEvent('preview-document-update', {
-            detail: { documentId: baseDocumentId, newContent: v.content },
-          })
-        );
-      } else {
-        window.dispatchEvent(
-          new CustomEvent('cancel-document-update', {
-            detail: { documentId: baseDocumentId },
-          })
-        );
-      }
-      setHoverIndex(null);
-    }
+    setHoverIndex(null);
 
+    if (selectedIndex !== null && selectedIndex < versions.length - 1) {
+      const v = versions[selectedIndex];
+      window.dispatchEvent(
+        new CustomEvent('preview-document-update', {
+          detail: { documentId: baseDocumentId, newContent: v.content },
+        })
+      );
+    } else {
+      window.dispatchEvent(
+        new CustomEvent('cancel-document-update', {
+          detail: { documentId: baseDocumentId },
+        })
+      );
+    }
   };
 
   const Tooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: { ts: string; additions: number; deletions: number } }> }) => {
