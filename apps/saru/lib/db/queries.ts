@@ -113,6 +113,39 @@ export async function saveMessages({ messages }: { messages: Array<typeof schema
   }
 }
 
+/**
+ * Parses message content from database format to application format
+ * @param content - The raw content from the database (string or object)
+ * @param messageId - The message ID for error logging
+ * @param source - The source function name for error logging
+ * @returns Parsed content as string or object
+ */
+function parseMessageContent(content: any, messageId: string, source: string): string | object {
+  let parsedContent: string | object = '';
+  try {
+    if (content) {
+      const contentArray = typeof content === 'string'
+        ? JSON.parse(content)
+        : content;
+
+      if (Array.isArray(contentArray) && contentArray.length > 0) {
+        const firstElement = contentArray[0];
+        if (firstElement.type === 'text' && typeof firstElement.content === 'string') {
+          parsedContent = firstElement.content;
+        } else {
+          parsedContent = contentArray;
+        }
+      } else if (typeof contentArray === 'object' && contentArray !== null) {
+        parsedContent = contentArray;
+      }
+    }
+  } catch (e) {
+    console.error(`[DB Query - ${source}] Failed to parse message content for msg ${messageId}:`, e);
+    parsedContent = '[Error parsing content]';
+  }
+  return parsedContent;
+}
+
 export async function getMessagesByChatId({ id }: { id: string }): Promise<Message[]> {
   try {
     const data = await db.select()
@@ -121,31 +154,9 @@ export async function getMessagesByChatId({ id }: { id: string }): Promise<Messa
       .orderBy(asc(schema.Message.createdAt));
 
     return data.map((message) => {
-      let parsedContent: string | object = ''; 
-      try {
-        if (message.content) {
-          const contentArray = typeof message.content === 'string'
-            ? JSON.parse(message.content)
-            : message.content;
-
-          if (Array.isArray(contentArray) && contentArray.length > 0) {
-            const firstElement = contentArray[0];
-            if (firstElement.type === 'text' && typeof firstElement.content === 'string') {
-              parsedContent = firstElement.content; 
-            } else {
-              parsedContent = contentArray; 
-            }
-          } else if (typeof contentArray === 'object' && contentArray !== null) {
-            parsedContent = contentArray;
-          }
-        }
-      } catch (e) {
-        console.error(`[DB Query - getMessagesByChatId] Failed to parse message content for msg ${message.id}:`, e, 'Raw content:', message.content);
-        parsedContent = '[Error parsing content]';
-      }
       return {
         ...message,
-        content: parsedContent as any, 
+        content: parseMessageContent(message.content, message.id, 'getMessagesByChatId') as any,
       };
     });
 
@@ -155,8 +166,73 @@ export async function getMessagesByChatId({ id }: { id: string }): Promise<Messa
   }
 }
 
+export async function getMessageById({ id }: { id: string }): Promise<Message | null> {
+  try {
+    const data = await db.select()
+      .from(schema.Message)
+      .where(eq(schema.Message.id, id))
+      .limit(1);
 
+    if (!data || data.length === 0) {
+      return null;
+    }
 
+    return {
+      ...data[0],
+      content: parseMessageContent(data[0].content, data[0].id, 'getMessageById') as any,
+    };
+  } catch (error) {
+    console.error('Error fetching message by ID:', error);
+    return null;
+  }
+}
+
+export async function updateToolMetadata({
+  messageId,
+  toolCallId,
+  applied,
+  rejected,
+}: {
+  messageId: string;
+  toolCallId: string;
+  applied: boolean;
+  rejected: boolean;
+}): Promise<void> {
+  try {
+    const message = await getMessageById({ id: messageId });
+    if (!message) throw new Error('Message not found');
+
+    const contentObj = message.content;
+    
+    if (!contentObj || typeof contentObj !== 'object') {
+      throw new Error('Invalid message content structure');
+    }
+
+    const contentWithParts = contentObj as { parts?: Array<{ toolCallId?: string; output?: any; [key: string]: any }>; [key: string]: any };
+    
+    if (contentWithParts.parts && Array.isArray(contentWithParts.parts)) {
+      contentWithParts.parts = contentWithParts.parts.map((part: any) => {
+        if (part.toolCallId === toolCallId) {
+          return {
+            ...part,
+            output: { ...part.output, applied, rejected },
+          };
+        }
+        return part;
+      });
+    } else {
+      console.warn(`[DB Query - updateToolMetadata] Message ${messageId} has no parts array`);
+    }
+
+    await db
+      .update(schema.Message)
+      .set({ content: JSON.stringify(contentObj) })
+      .where(eq(schema.Message.id, messageId));
+  } catch (error) {
+    console.error('Error updating tool metadata:', error);
+    throw error;
+  }
+}
 
 export async function saveDocument({
   id,
@@ -480,20 +556,6 @@ export async function deleteDocumentsByIdAfterTimestamp({
   } catch (error) {
     console.error('Error deleting documents:', error);
     throw error;
-  }
-}
-
-export async function getMessageById({ id }: { id: string }): Promise<Message | null> { // Return null if not found
-  try {
-    const data = await db.select()
-      .from(schema.Message)
-      .where(eq(schema.Message.id, id))
-      .limit(1);
-
-    return data[0] || null;
-  } catch (error) {
-    console.error('Error fetching message by ID:', error);
-    throw error; 
   }
 }
 
