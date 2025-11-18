@@ -106,24 +106,25 @@ export interface DocumentToolResultProps {
     content?: string;
     message?: string;
     toolCallId?: string;
+    applied?: boolean;
+    rejected?: boolean;
   };
   isReadonly: boolean;
+  chatId?: string;
+  messageId?: string;
 }
 
 function PureDocumentToolResult({
   type,
   result,
   isReadonly,
+  chatId,
+  messageId,
 }: DocumentToolResultProps) {
   const { document, setDocument } = useDocument();
   const [isSaving, setIsSaving] = useState(false);
-  const [isApplied, setIsApplied] = useState(() => {
-    if (type === 'update' && result.id && document.documentId === result.id) {
-      return document.content === result.newContent;
-    }
-    return false;
-  });
-  const [isRejected, setIsRejected] = useState(false);
+  const [isApplied, setIsApplied] = useState(() => result.applied ?? false);
+  const [isRejected, setIsRejected] = useState(() => result.rejected ?? false);
 
   const isUpdateProposal =
     type === 'update' && 
@@ -132,7 +133,7 @@ function PureDocumentToolResult({
     result.originalContent !== result.newContent;
 
   useEffect(() => {
-    if (isUpdateProposal && result.id && result.newContent) {
+    if (isUpdateProposal && result.id && result.newContent && !isApplied && !isRejected) {
       const event = new CustomEvent('preview-document-update', {
         detail: {
           documentId: result.id,
@@ -142,7 +143,7 @@ function PureDocumentToolResult({
       });
       window.dispatchEvent(event);
     }
-  }, [isUpdateProposal, result.id, result.newContent, result.originalContent]);
+  }, [isUpdateProposal, result.id, result.newContent, result.originalContent, isApplied, isRejected]);
 
   const handleApplyUpdate = useCallback(() => {
     if (type !== 'update' || !result.newContent || !result.id || isSaving) return;
@@ -171,6 +172,24 @@ function PureDocumentToolResult({
       detail: { documentId: result.id, newContent: result.newContent, transient: false },
     }));
     setIsApplied(true);
+
+    // Persist applied state to chat metadata
+    if (chatId && messageId && result.toolCallId) {
+      fetch('/api/messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId,
+          chatId,
+          toolCallId: result.toolCallId,
+          applied: true,
+          rejected: false,
+        }),
+      }).catch(err => {
+        console.error('[DocumentToolResult] Failed to persist applied state:', err);
+      });
+    }
+
     fetch('/api/document', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -196,6 +215,23 @@ function PureDocumentToolResult({
 
     setIsRejected(true);
 
+    // Persist rejected state to chat metadata
+    if (chatId && messageId && result.toolCallId) {
+      fetch('/api/messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId,
+          chatId,
+          toolCallId: result.toolCallId,
+          applied: false,
+          rejected: true,
+        }),
+      }).catch(err => {
+        console.error('[DocumentToolResult] Failed to persist rejected state:', err);
+      });
+    }
+
     window.dispatchEvent(new CustomEvent('tool-result', {
       detail: {
         toolCallId: result.toolCallId,
@@ -219,7 +255,7 @@ function PureDocumentToolResult({
     });
     window.dispatchEvent(event);
     toast.info('Update proposal rejected.');
-  }, [result.id, result.title, result.originalContent, result.newContent, result.toolCallId, type]);
+  }, [result.id, result.title, result.originalContent, result.newContent, result.toolCallId, type, chatId, messageId]);
 
   if (result.error) {
      return (

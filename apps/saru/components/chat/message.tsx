@@ -232,6 +232,8 @@ const PurePreviewMessage = ({
                         type={actionType}
                         result={{ ...result, toolCallId: p.toolCallId } as DocumentToolResultProps['result']}
                         isReadonly={isReadonly}
+                        chatId={chatId}
+                        messageId={message.id}
                       />
                     );
                   }
