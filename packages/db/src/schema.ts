@@ -215,3 +215,11 @@ export const subscriptionRelations = relations(subscription, ({ one }) => ({
 		references: [user.id],
 	}),
 }));
+
+export const waitlist = pgTable("waitlist", {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: text('email').notNull().unique(),
+  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
+});
+
+export type Waitlist = InferSelectModel<typeof waitlist>;

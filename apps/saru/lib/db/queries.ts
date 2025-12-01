@@ -1224,3 +1224,41 @@ export async function deleteMessageById({
     throw error;
   }
 }
+
+export async function addToWaitlist({ email }: { email: string }): Promise<void> {
+  try {
+    await db.insert(schema.waitlist).values({
+      email,
+      createdAt: new Date(),
+    });
+  } catch (error) {
+    console.error('Error adding to waitlist:', error);
+    throw error;
+  }
+}
+
+export async function getWaitlistCount(): Promise<number> {
+  try {
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.waitlist);
+    return Number(count);
+  } catch (error) {
+    console.error('Error getting waitlist count:', error);
+    return 0;
+  }
+}
+
+export async function checkEmailInWaitlist({ email }: { email: string }): Promise<boolean> {
+  try {
+    const result = await db
+      .select({ id: schema.waitlist.id })
+      .from(schema.waitlist)
+      .where(eq(schema.waitlist.email, email))
+      .limit(1);
+    return result.length > 0;
+  } catch (error) {
+    console.error('Error checking email in waitlist:', error);
+    return false;
+  }
+}
