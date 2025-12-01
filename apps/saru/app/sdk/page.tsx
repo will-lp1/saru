@@ -90,7 +90,7 @@ export default function SDKPage() {
               className="flex h-11 w-full items-center justify-center"
             >
               <p className="text-sm font-medium text-muted-foreground">
-                You're in! We'll keep you posted.
+                You&rsquo;re in! We&rsquo;ll keep you posted.
               </p>
             </motion.div>
           ) : (
