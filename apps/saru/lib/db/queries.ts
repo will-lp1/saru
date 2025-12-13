@@ -1,7 +1,7 @@
 import 'server-only';
 import { db } from '@saru/db'; 
 import * as schema from '@saru/db'; 
-import { eq, desc, asc, inArray, gt, gte, and, sql, lt } from 'drizzle-orm'; // Import Drizzle operators and
+import { eq, desc, asc, inArray, gt, gte, and, sql, lt, type SQL } from 'drizzle-orm'; // Import Drizzle operators and
 
 type Chat = typeof schema.Chat.$inferSelect; 
 type Message = typeof schema.Message.$inferSelect; 
@@ -10,7 +10,7 @@ type Document = typeof schema.Document.$inferSelect;
 
 interface MessageContent {
   type: 'text' | 'tool_call' | 'tool_result';
-  content: any;
+  content: unknown;
   order: number;
 }
 
@@ -120,24 +120,13 @@ export async function saveMessages({ messages }: { messages: Array<typeof schema
  * @param source - The source function name for error logging
  * @returns Parsed content as string or object
  */
-function parseMessageContent(content: any, messageId: string, source: string): string | object {
-  let parsedContent: string | object = '';
+function parseMessageContent(content: unknown, messageId: string, source: string): unknown {
+  let parsedContent: unknown = '';
   try {
     if (content) {
-      const contentArray = typeof content === 'string'
-        ? JSON.parse(content)
-        : content;
-
-      if (Array.isArray(contentArray) && contentArray.length > 0) {
-        const firstElement = contentArray[0];
-        if (firstElement.type === 'text' && typeof firstElement.content === 'string') {
-          parsedContent = firstElement.content;
-        } else {
-          parsedContent = contentArray;
-        }
-      } else if (typeof contentArray === 'object' && contentArray !== null) {
-        parsedContent = contentArray;
-      }
+      const parsed =
+        typeof content === 'string' ? (JSON.parse(content) as unknown) : content;
+      parsedContent = parsed;
     }
   } catch (e) {
     console.error(`[DB Query - ${source}] Failed to parse message content for msg ${messageId}:`, e);
@@ -153,12 +142,10 @@ export async function getMessagesByChatId({ id }: { id: string }): Promise<Messa
       .where(eq(schema.Message.chatId, id))
       .orderBy(asc(schema.Message.createdAt));
 
-    return data.map((message) => {
-      return {
-        ...message,
-        content: parseMessageContent(message.content, message.id, 'getMessagesByChatId') as any,
-      };
-    });
+    return data.map((message) => ({
+      ...message,
+      content: parseMessageContent(message.content, message.id, 'getMessagesByChatId'),
+    }));
 
   } catch (error) {
     console.error('Error fetching messages:', error);
@@ -179,7 +166,7 @@ export async function getMessageById({ id }: { id: string }): Promise<Message | 
 
     return {
       ...data[0],
-      content: parseMessageContent(data[0].content, data[0].id, 'getMessageById') as any,
+      content: parseMessageContent(data[0].content, data[0].id, 'getMessageById'),
     };
   } catch (error) {
     console.error('Error fetching message by ID:', error);
@@ -208,14 +195,20 @@ export async function updateToolMetadata({
       throw new Error('Invalid message content structure');
     }
 
-    const contentWithParts = contentObj as { parts?: Array<{ toolCallId?: string; output?: any; [key: string]: any }>; [key: string]: any };
+    type ToolPart = Record<string, unknown> & { toolCallId?: string };
+    type ContentWithParts = Record<string, unknown> & { parts?: ToolPart[] };
+    const contentWithParts = contentObj as ContentWithParts;
     
     if (contentWithParts.parts && Array.isArray(contentWithParts.parts)) {
-      contentWithParts.parts = contentWithParts.parts.map((part: any) => {
+      contentWithParts.parts = contentWithParts.parts.map((part) => {
         if (part.toolCallId === toolCallId) {
+          const existingOutput =
+            typeof part.output === 'object' && part.output !== null
+              ? (part.output as Record<string, unknown>)
+              : {};
           return {
             ...part,
-            output: { ...part.output, applied, rejected },
+            output: { ...existingOutput, applied, rejected },
           };
         }
         return part;
@@ -691,7 +684,7 @@ export async function getPaginatedDocumentsByUserId({
   try {
     const extendedLimit = limit + 1;
 
-    const query = (whereCondition?: any) =>
+    const query = (whereCondition?: SQL<unknown>) =>
       db
         .select({
           id: schema.Document.id,

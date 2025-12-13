@@ -52,7 +52,7 @@ export function useDocumentVersions(documentId: string | null, userId?: string |
   const loadFromCache = useCallback(async () => {
     if (!documentId || !userId) return;
     try {
-      const cached = await versionCache.getVersions(documentId, userId);
+      const cached = await versionCache.getVersions<Document>(documentId, userId);
       if (cached) setVersions(cached);
     } catch {
       /* ignore cache errors */

@@ -1,5 +1,6 @@
 import {
   type UIMessage,
+  type UIMessageStreamWriter,
   streamText,
   smoothStream,
   stepCountIs,
@@ -189,8 +190,8 @@ export async function POST(request: Request) {
       trailingMessageId,
     }: ChatRequestBody = await request.json();
 
-    const activeDocumentId: ActiveDocumentId = requestData?.activeDocumentId ?? undefined;
-    const mentionedDocumentIds = requestData?.mentionedDocumentIds ?? undefined;
+    let activeDocumentId: ActiveDocumentId = requestData?.activeDocumentId ?? undefined;
+    let mentionedDocumentIds = requestData?.mentionedDocumentIds ?? undefined;
     const customInstructions = aiOptions?.customInstructions ?? null;
     const suggestionLength = aiOptions?.suggestionLength ?? 'medium';
     const writingStyleSummary = aiOptions?.writingStyleSummary ?? null;
@@ -206,17 +207,33 @@ export async function POST(request: Request) {
       return new Response('Invalid chat ID format', { status: 400 });
     }
 
+    if (activeDocumentId && !uuidRegex.test(activeDocumentId)) {
+      activeDocumentId = undefined;
+    }
+    if (Array.isArray(mentionedDocumentIds)) {
+      mentionedDocumentIds = mentionedDocumentIds.filter(
+        (id): id is string => typeof id === 'string' && uuidRegex.test(id)
+      );
+    } else {
+      mentionedDocumentIds = undefined;
+    }
+
     const chat = await getChatById({ id: chatId });
 
     if (!chat) {
-      const title = await generateTitleFromUserMessage({ message: userMessage });
+      let title = 'New chat';
+      try {
+        title = await generateTitleFromUserMessage({ message: userMessage });
+      } catch (error) {
+        console.warn('[Chat Route] Title generation failed, using fallback:', error);
+      }
       await saveChat({
         id: chatId,
         userId: userId,
         title,
         document_context: {
           active: activeDocumentId || undefined,
-          mentioned: mentionedDocumentIds
+          mentioned: mentionedDocumentIds,
         }
       });
     } else {
@@ -229,7 +246,7 @@ export async function POST(request: Request) {
         userId,
         context: {
           active: activeDocumentId || undefined,
-          mentioned: mentionedDocumentIds
+          mentioned: mentionedDocumentIds,
         }
       });
     }
@@ -276,8 +293,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // Set up tools based on document state
-    const availableTools: any = {};
+    type AvailableTools = Partial<{
+      streamingDocument: ReturnType<typeof streamingDocument>;
+      updateDocument: ReturnType<typeof updateDocument>;
+      webSearch: ReturnType<typeof webSearch>;
+    }>;
+    const availableTools: AvailableTools = {};
     const activeToolsList: Array<'streamingDocument' | 'updateDocument' | 'webSearch'> = [];
 
     const activeDocumentContent = activeDoc?.content ?? '';
@@ -318,8 +339,8 @@ export async function POST(request: Request) {
     });
 
     const stream = createUIMessageStream({
-      execute: ({ writer: dataStream }) => {
-        const toolsWithStream: any = { ...availableTools };
+      execute: ({ writer: dataStream }: { writer: UIMessageStreamWriter }) => {
+        const toolsWithStream: AvailableTools = { ...availableTools };
         if (toolsWithStream.streamingDocument) {
           toolsWithStream.streamingDocument = streamingDocument({
             session: toolSession,
@@ -342,13 +363,24 @@ export async function POST(request: Request) {
         dataStream.merge(result.toUIMessageStream({ sendReasoning: true }));
       },
       generateId: generateUUID,
-      onFinish: async ({ messages: allMessages }) => {
+      onFinish: async ({ messages: allMessages }: { messages: UIMessage[] }) => {
         if (userId) {
           try {
-            const assistant = allMessages.findLast((m) => m.role === 'assistant') ?? allMessages[allMessages.length - 1];
-            if (assistant) {
-              const dbMessage = convertUIMessageToDBFormat(assistant, chatId);
-              await saveMessages({ messages: [dbMessage] });
+            const existingMessages = await getMessagesByChatId({ id: chatId });
+            const existingIds = new Set(existingMessages.map((m) => m.id));
+
+            const generated = allMessages
+              .filter(
+                (m) =>
+                  m.role === 'assistant' &&
+                  typeof m.id === 'string' &&
+                  m.id.length > 0 &&
+                  !existingIds.has(m.id)
+              )
+              .map((m) => convertUIMessageToDBFormat(m, chatId));
+
+            if (generated.length > 0) {
+              await saveMessages({ messages: generated });
             }
             await updateChatContextQuery({
               chatId,

@@ -33,9 +33,10 @@ export const createDocument = ({ session }: CreateDocumentProps) =>
           title,
           message: 'New document created successfully'
         };
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('[AI Tool] Failed to create document:', error);
-        throw new Error(`Failed to create document: ${error.message || error}`);
+        const msg = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to create document: ${msg}`);
       }
     },
   });

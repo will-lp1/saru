@@ -8,6 +8,60 @@ import { twMerge } from 'tailwind-merge';
 import type { Message as DBMessage, Document } from '@saru/db';
 import type { ChatMessage, ChatTools, CustomUIDataTypes } from '@/types/chat';
 
+type ChatRole = 'user' | 'assistant' | 'system';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isChatRole(value: unknown): value is ChatRole {
+  return value === 'user' || value === 'assistant' || value === 'system';
+}
+
+type LegacyStoredTextItem = {
+  type: 'text';
+  content: string;
+  order?: number;
+};
+
+function isLegacyStoredTextItem(value: unknown): value is LegacyStoredTextItem {
+  if (!isRecord(value)) return false;
+  return value.type === 'text' && typeof value.content === 'string';
+}
+
+type PartsContainer = { parts: unknown[] };
+function isPartsContainer(value: unknown): value is PartsContainer {
+  return isRecord(value) && Array.isArray(value.parts);
+}
+
+type TextPart = { type: 'text'; text: string };
+function isTextPart(value: unknown): value is TextPart {
+  if (!isRecord(value)) return false;
+  return value.type === 'text' && typeof value.text === 'string';
+}
+
+// Best-effort validation for arbitrary UI message parts.
+function toSafeParts(
+  value: unknown
+): UIMessagePart<CustomUIDataTypes, ChatTools>[] {
+  if (!Array.isArray(value)) return [];
+
+  const parts: UIMessagePart<CustomUIDataTypes, ChatTools>[] = [];
+  for (const item of value) {
+    // Keep well-formed text parts.
+    if (isTextPart(item)) {
+      parts.push(item);
+      continue;
+    }
+
+    // Keep any object with a string `type` (covers tool parts, reasoning parts, etc.).
+    if (isRecord(item) && typeof item.type === 'string') {
+      parts.push(item as unknown as UIMessagePart<CustomUIDataTypes, ChatTools>);
+    }
+  }
+  return parts;
+}
+
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -54,10 +108,30 @@ export function generateUUID(): string {
 export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
   return messages.map((message) => ({
     id: message.id,
-    role: message.role as 'user' | 'assistant' | 'system',
-    parts: ((message as any).parts ||
-            (message.content as any)?.parts ||
-            []) as UIMessagePart<CustomUIDataTypes, ChatTools>[],
+    role: isChatRole(message.role) ? message.role : 'assistant',
+    parts: (() => {
+      const content: unknown = message.content;
+
+      // Preferred format: { parts: UIMessagePart[] }
+      if (isPartsContainer(content)) {
+        return toSafeParts(content.parts);
+      }
+
+      // Legacy format: plain string content
+      if (typeof content === 'string') {
+        return [{ type: 'text', text: content }];
+      }
+
+      // Legacy format: [{ type: 'text', content: '...' }, ...]
+      if (Array.isArray(content)) {
+        const mapped = content
+          .filter(isLegacyStoredTextItem)
+          .map((item) => ({ type: 'text', text: item.content } satisfies TextPart));
+        return mapped;
+      }
+
+      return [];
+    })(),
     metadata: {
       createdAt: formatISO(message.createdAt),
     },
@@ -115,8 +189,9 @@ export function getDocumentTimestampByIndex(
 
 
 export function getTextFromMessage(message: ChatMessage): string {
-  return message.parts
-    .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+  const parts = message.parts as UIMessagePart<CustomUIDataTypes, ChatTools>[];
+  return parts
+    .filter(isTextPart)
     .map((part) => part.text)
     .join('');
 }
@@ -155,7 +230,7 @@ class VersionCache {
     });
   }
 
-  async getVersions(documentId: string, userId: string): Promise<any[] | null> {
+  async getVersions<T = unknown>(documentId: string, userId: string): Promise<T[] | null> {
     if (!this.db) await this.init();
     
     return new Promise((resolve, reject) => {
@@ -169,7 +244,7 @@ class VersionCache {
         if (cached && cached.userId === userId) {
           const isExpired = Date.now() - cached.timestamp > 5 * 60 * 1000;
           if (!isExpired) {
-            resolve(cached.versions);
+            resolve(cached.versions as T[]);
             return;
           }
         }
@@ -178,7 +253,7 @@ class VersionCache {
     });
   }
 
-  async setVersions(documentId: string, versions: any[], userId: string): Promise<void> {
+  async setVersions<T = unknown>(documentId: string, versions: T[], userId: string): Promise<void> {
     if (!this.db) await this.init();
     
     return new Promise((resolve, reject) => {

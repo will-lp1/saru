@@ -15,6 +15,9 @@ export async function GET() {
   const userId = session.user.id;
 
   try {
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
     // 1. Fetch recent chats using Drizzle query
     // Note: getChatsByUserId fetches all chats, add limit/pagination if needed later
     const chats = await getChatsByUserId({ id: userId }); 
@@ -25,12 +28,21 @@ export async function GET() {
     const docIds = new Set<string>();
     chats.forEach(chat => {
       // Ensure context is treated as potentially null/undefined before access
-      const context = chat.document_context as any; // Keep type assertion for easier access or refine type
-      if (context?.active) {
-        docIds.add(context.active);
+      const context = chat.document_context as unknown;
+      if (!context || typeof context !== 'object') return;
+
+      const active = (context as Record<string, unknown>).active;
+      if (typeof active === 'string' && uuidRegex.test(active)) {
+        docIds.add(active);
       }
-      if (context?.mentioned && Array.isArray(context.mentioned)) {
-        context.mentioned.forEach((id: string) => docIds.add(id));
+
+      const mentioned = (context as Record<string, unknown>).mentioned;
+      if (Array.isArray(mentioned)) {
+        for (const id of mentioned) {
+          if (typeof id === 'string' && uuidRegex.test(id)) {
+            docIds.add(id);
+          }
+        }
       }
     });
 
@@ -54,17 +66,32 @@ export async function GET() {
 
     // 4. Process chats, adding titles to the context (same logic)
     const processedChats = chats.map(chat => {
-      const context = (chat.document_context || {}) as any;
+      const rawContext = chat.document_context as unknown;
+      const context =
+        rawContext && typeof rawContext === 'object'
+          ? (rawContext as Record<string, unknown>)
+          : {};
+
+      const active =
+        typeof context.active === 'string' && uuidRegex.test(context.active)
+          ? context.active
+          : null;
+
+      const mentioned =
+        Array.isArray(context.mentioned)
+          ? context.mentioned.filter((id): id is string => typeof id === 'string' && uuidRegex.test(id))
+          : [];
+
       return {
         id: chat.id,
         title: chat.title,
         createdAt: chat.createdAt,
         userId: chat.userId,
         document_context: {
-          active: context.active,
-          activeTitle: context.active ? (documentTitles[context.active] || null) : null,
-          mentioned: context.mentioned || [],
-          mentionedTitles: (context.mentioned || []).map((id: string) => documentTitles[id] || null),
+          active,
+          activeTitle: active ? (documentTitles[active] || null) : null,
+          mentioned,
+          mentionedTitles: mentioned.map((id) => documentTitles[id] || null),
         }
       };
     });

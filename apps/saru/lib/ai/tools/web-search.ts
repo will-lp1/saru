@@ -6,6 +6,34 @@ interface WebSearchProps {
   session: Session;
 }
 
+type WebSearchResultItem = {
+  title?: string;
+  url?: string;
+  content?: string;
+  score?: number;
+  publishedDate?: string;
+};
+
+type WebSearchReturn = {
+  query: string;
+  answer?: string;
+  results: WebSearchResultItem[];
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getString(obj: Record<string, unknown>, key: string): string | undefined {
+  const v = obj[key];
+  return typeof v === 'string' ? v : undefined;
+}
+
+function getNumber(obj: Record<string, unknown>, key: string): number | undefined {
+  const v = obj[key];
+  return typeof v === 'number' ? v : undefined;
+}
+
 const searchParameters = z.object({
   query: z.string().min(1).describe('The search query.'),
   maxResults: z.number().optional().describe('Maximum number of results to return.'),
@@ -14,6 +42,7 @@ const searchParameters = z.object({
 });
 
 export const webSearch = ({ session }: WebSearchProps) => {
+  const _session = session;
   // First, create the tool without execute
   const baseTool = tool({
     description: 'Performs a real-time web search using the Tavily API and returns structured search results.',
@@ -48,8 +77,28 @@ export const webSearch = ({ session }: WebSearchProps) => {
         throw new Error(`Web search failed: ${response.status} ${errorText}`);
       }
       
-      const json = await response.json();
-      return json;
+      const json: unknown = await response.json();
+
+      const answer =
+        isRecord(json) ? getString(json, 'answer') : undefined;
+
+      const rawResults =
+        isRecord(json) && Array.isArray(json.results) ? json.results : [];
+
+      const results: WebSearchResultItem[] = [];
+      for (const item of rawResults.slice(0, maxResults)) {
+        if (!isRecord(item)) continue;
+        results.push({
+          title: getString(item, 'title'),
+          url: getString(item, 'url'),
+          content: getString(item, 'content'),
+          score: getNumber(item, 'score'),
+          publishedDate: getString(item, 'published_date'),
+        });
+      }
+
+      const payload: WebSearchReturn = { query, answer, results };
+      return payload;
     },
   };
 };

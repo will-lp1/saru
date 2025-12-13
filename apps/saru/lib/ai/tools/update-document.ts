@@ -74,7 +74,7 @@ export const updateDocument = ({ session: _session, documentId: defaultDocumentI
           status: 'Update proposal generated.',
         };
 
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('[AI Tool] updateDocument failed:', error);
         const errorMessage = error instanceof Error ? error.message : String(error);
         return {

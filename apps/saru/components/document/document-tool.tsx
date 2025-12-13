@@ -133,7 +133,7 @@ function PureDocumentToolResult({
     result.originalContent !== result.newContent;
 
   useEffect(() => {
-    if (isUpdateProposal && result.id && result.newContent && !isApplied && !isRejected) {
+    if (isUpdateProposal && result.id && result.newContent != null && !isApplied && !isRejected) {
       const event = new CustomEvent('preview-document-update', {
         detail: {
           documentId: result.id,
@@ -146,11 +146,12 @@ function PureDocumentToolResult({
   }, [isUpdateProposal, result.id, result.newContent, result.originalContent, isApplied, isRejected]);
 
   const handleApplyUpdate = useCallback(() => {
-    if (type !== 'update' || !result.newContent || !result.id || isSaving) return;
+    const newContent = result.newContent;
+    if (type !== 'update' || typeof newContent !== 'string' || !result.id || isSaving) return;
     setIsSaving(true);
     setDocument(prev => ({
       ...prev,
-      content: result.newContent!
+      content: newContent
     }));
 
     window.dispatchEvent(new CustomEvent('tool-result', {
@@ -160,7 +161,7 @@ function PureDocumentToolResult({
           id: result.id,
           title: result.title,
           originalContent: result.originalContent,
-          newContent: result.newContent,
+          newContent: newContent,
           status: 'Update accepted and applied.',
           action: 'update-accepted',
           transient: false,
@@ -169,7 +170,7 @@ function PureDocumentToolResult({
     }));
 
     window.dispatchEvent(new CustomEvent('apply-document-update', {
-      detail: { documentId: result.id, newContent: result.newContent, transient: false },
+      detail: { documentId: result.id, newContent: newContent, transient: false },
     }));
     setIsApplied(true);
 
@@ -193,7 +194,7 @@ function PureDocumentToolResult({
     fetch('/api/document', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: result.id, content: result.newContent }),
+      body: JSON.stringify({ id: result.id, content: newContent }),
     })
       .then(async response => {
         if (!response.ok) {
@@ -211,7 +212,7 @@ function PureDocumentToolResult({
   }, [result.id, result.newContent, result.title, result.originalContent, result.toolCallId, type, isSaving, setDocument]);
 
   const handleRejectUpdate = useCallback(() => {
-    if (type !== 'update' || !result.id || !result.originalContent) return;
+    if (type !== 'update' || !result.id || result.originalContent == null) return;
 
     setIsRejected(true);
 
