@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback, useMemo, Suspense, useTransition } from 'react';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
 import type { Document } from '@saru/db';
@@ -56,9 +56,11 @@ export function DocumentWorkspace({
   const [saveState, setSaveState] = useState<SaveStatus>('idle');
   const { document, setDocument } = useDocument();
   const [isCreatingDocument, setIsCreatingDocument] = useState(false);
+  const [isNavigatingToNewDoc, setIsNavigatingToNewDoc] = useState(false);
   const [newDocumentTitle, setNewDocumentTitle] = useState('');
   const [isRenamingDocument, setIsRenamingDocument] = useState(false);
 
+  const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const [editingTitle, setEditingTitle] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -194,6 +196,7 @@ export function DocumentWorkspace({
       }
       
       if (params.navigateAfterCreate) {
+        setIsNavigatingToNewDoc(true);
         router.push(`/documents/${documentId}`);
       }
       
@@ -206,6 +209,22 @@ export function DocumentWorkspace({
       setIsCreatingDocument(false);
     }
   };
+
+  useEffect(() => {
+    if (!isNavigatingToNewDoc) return;
+
+    if (pathname !== '/documents') {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      if (pathname === '/documents') {
+        setIsNavigatingToNewDoc(false);
+      }
+    }, 8000);
+
+    return () => clearTimeout(timeout);
+  }, [isNavigatingToNewDoc, pathname]);
 
 
   const currentDocument = useMemo(() => {
@@ -493,7 +512,7 @@ export function DocumentWorkspace({
   }, [documents]);
 
   const handleCreateDocumentWithId = useCallback(async (id: string) => {
-    if (isCreatingDocument) return;
+    if (isCreatingDocument || isNavigatingToNewDoc) return;
     try {
       await createDocument({
         title: 'Untitled Document',
@@ -506,10 +525,10 @@ export function DocumentWorkspace({
       console.error('Error creating document with specific ID:', error);
       toast.error('Failed to create document');
     }
-  }, [isCreatingDocument, createDocument]);
+  }, [isCreatingDocument, isNavigatingToNewDoc, createDocument]);
 
   const handleCreateNewDocument = useCallback(async () => {
-    if (isCreatingDocument) return;
+    if (isCreatingDocument || isNavigatingToNewDoc) return;
 
     const trimmed = newDocumentTitle.trim();
     if (!trimmed) {
@@ -528,10 +547,10 @@ export function DocumentWorkspace({
       console.error('Error creating new document:', error);
       toast.error('Failed to create document');
     }
-  }, [isCreatingDocument, newDocumentTitle, createDocument]);
+  }, [isCreatingDocument, isNavigatingToNewDoc, newDocumentTitle, createDocument]);
 
   const handleCreateDocumentFromEditor = useCallback(async (initialContent: string) => {
-      if (isCreatingDocument || initialDocumentId !== 'init') return;
+      if (isCreatingDocument || isNavigatingToNewDoc || initialDocumentId !== 'init') return;
       const newDocId = generateUUID();
       try {
           await createDocument({
@@ -545,7 +564,7 @@ export function DocumentWorkspace({
           console.error('Error creating document from editor:', error);
           toast.error('Failed to create document');
       }
-  }, [isCreatingDocument, initialDocumentId, createDocument]);
+  }, [isCreatingDocument, isNavigatingToNewDoc, initialDocumentId, createDocument]);
 
   const isCurrentVersion = useMemo(() => {
     if (documents.length === 0) {
@@ -600,9 +619,13 @@ export function DocumentWorkspace({
               variant="default"
               className="w-full"
               onClick={() => handleCreateDocumentWithId(showCreateDocumentForId)}
-              disabled={isCreatingDocument}
+              disabled={isCreatingDocument || isNavigatingToNewDoc}
             >
-              {isCreatingDocument ? <Loader2 className="size-4 animate-spin mx-auto" /> : 'Create Document'}
+              {isCreatingDocument || isNavigatingToNewDoc ? (
+                <Loader2 className="size-4 animate-spin mx-auto" />
+              ) : (
+                'Create Document'
+              )}
             </Button>
             <Button
               variant="outline"
@@ -689,9 +712,9 @@ export function DocumentWorkspace({
               variant="default"
               className="w-full"
               onClick={handleCreateNewDocument}
-              disabled={isCreatingDocument}
+              disabled={isCreatingDocument || isNavigatingToNewDoc}
             >
-              {isCreatingDocument ? (
+              {isCreatingDocument || isNavigatingToNewDoc ? (
                 <Loader2 className="size-4 animate-spin mx-auto" />
               ) : (
                 'Create Document'
