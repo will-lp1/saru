@@ -71,14 +71,6 @@ const resend = emailVerificationEnabled && process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
-const plans = [
-  {
-    name: "saru",
-    priceId: process.env.STRIPE_PRO_MONTHLY_PRICE_ID!,
-    annualDiscountPriceId: process.env.STRIPE_PRO_YEARLY_PRICE_ID!,
-  },
-];
-
 type HookUser = {
   id: string;
   email?: string | null;
@@ -86,19 +78,28 @@ type HookUser = {
 
 const authPlugins: any[] = [];
 
-authPlugins.push(
-  stripe({
-    stripeClient: stripeClient!,
-    stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
-    createCustomerOnSignUp: true,
-    subscription: {
-      enabled: stripeEnabled,
-      plans,
-      requireEmailVerification: emailVerificationEnabled,
+if (stripeEnabled) {
+  const plans = [
+    {
+      name: "saru",
+      priceId: process.env.STRIPE_PRO_MONTHLY_PRICE_ID!,
+      annualDiscountPriceId: process.env.STRIPE_PRO_YEARLY_PRICE_ID!,
     },
-  })
-);
+  ];
 
+  authPlugins.push(
+    stripe({
+      stripeClient: stripeClient!,
+      stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
+      createCustomerOnSignUp: true,
+      subscription: {
+        enabled: stripeEnabled,
+        plans,
+        requireEmailVerification: emailVerificationEnabled,
+      },
+    })
+  );
+}
 
 authPlugins.push(nextCookies());
 
