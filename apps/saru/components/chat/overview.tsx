@@ -82,11 +82,11 @@ function ToolboxDialog() {
             </CardHeader>
             <CardContent className="p-6 text-sm text-muted-foreground flex-grow">
               <p className="demo-prose-mirror-style">
-                <span className="demo-text-base">You start typing, and the AI offers</span>
+                <span className="demo-text-base">You start typing, and the AI offers </span>
                 <span className="inline-suggestion-wrapper">
                   <span
                     className="demo-inline-suggestion-animated"
-                    data-suggestion=" a helpful completion."
+                    data-suggestion="a helpful completion."
                   ></span>
                   <kbd className="inline-tab-icon">Tab</kbd>
                 </span>
