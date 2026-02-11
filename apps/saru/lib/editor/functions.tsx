@@ -40,7 +40,6 @@ const parser = new MarkdownParser(documentSchema, md, {
   },
 });
 
-// ---------- Serializer ----------
 const serializer = new MarkdownSerializer(
   { ...defaultMarkdownSerializer.nodes },
   { ...defaultMarkdownSerializer.marks, diffMark: { open: "", close: "" } }

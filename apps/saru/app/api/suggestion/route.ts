@@ -146,6 +146,13 @@ async function streamSuggestion({
 }) {
   let draftContent = '';
   const contentToModify = selectedText || document.content;
+  const formattingRules = `Formatting rules:
+- Return ONLY the revised text content (no JSON, no markdown fences, no labels).
+- Preserve paragraph structure from the input unless the user explicitly asks to reformat it.
+- Use real newline characters for paragraph breaks.
+- Never output escaped newline literals like "\\n" or "\\r\\n" in the final text.
+- Never output escaped tab literals like "\\t".`;
+
   let promptContext = selectedText 
     ? `You are an expert text editor. Your task is to refine a given piece of text based on a specific instruction.
 Original selected text:
@@ -167,7 +174,7 @@ Instruction: "${description}"`
 
   const lengthMap = { short: 'concise', medium: 'a moderate amount of detail', long: 'comprehensively' };
   const lengthDirective = lengthMap[suggestionLength] || lengthMap.medium;
-  promptContext += `\n\nPlease respond ${lengthDirective}.`;
+  promptContext += `\n\nPlease respond ${lengthDirective}.\n\n${formattingRules}`;
 
   if (selectedText) {
     promptContext += `\n\nPlease provide ONLY the modified version of the selected text.
@@ -179,7 +186,7 @@ Only output the resulting text, with no preamble or explanation.`;
 
   const { fullStream } = streamText({
     model: myProvider.languageModel('artifact-model'),
-    system: updateDocumentPrompt(contentToModify, 'text'),
+    system: `${updateDocumentPrompt(contentToModify, 'text')}\n\n${formattingRules}`,
     experimental_transform: smoothStream({ chunking: 'word' }),
     prompt: promptContext,
     providerOptions: {

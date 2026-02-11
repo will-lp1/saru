@@ -199,7 +199,27 @@
 }
 
 .ProseMirror {
+    position: relative;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+    -webkit-font-variant-ligatures: none;
+    font-variant-ligatures: none;
+    font-feature-settings: "liga" 0;
     outline: none;
+}
+
+/* Override prose max-width */
+.prose {
+    max-width: 100% !important;
+}
+
+.prose .ProseMirror > * + * {
+    margin-top: 1em;
+}
+
+.prose .ProseMirror > *:first-child {
+    margin-top: 0;
 }
 
 .cm-editor,

@@ -2,6 +2,7 @@
 
 import { EditorState, Transaction } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
+import { Fragment, Node as PMNode, Slice } from "prosemirror-model";
 import React, { memo, useEffect, useRef, useCallback, useState } from "react";
 import { buildContentFromDocument, buildDocumentFromContent } from "@/lib/editor/functions";
 import { setActiveEditorView } from "@/lib/editor/editor-state";
@@ -30,6 +31,102 @@ type EditorProps = {
   onStatusChange?: (status: SaveState) => void;
   onCreateDocumentRequest?: (initialContent: string) => void;
 };
+
+function normalizeInlineText(text: string): string {
+  return text
+    .replace(/[\u00ad\u200b\u200c\u200d\u2060\ufeff]/g, "")
+    .replace(/[\u2028\u2029]/g, " ")
+    .replace(/\u00a0/g, " ")
+    .replace(/\n+/g, " ");
+}
+
+function getLeadingChar(node: PMNode): string {
+  if (node.isText) return node.text?.charAt(0) ?? "";
+
+  let result = "";
+  node.forEach((child) => {
+    if (!result) result = getLeadingChar(child);
+  });
+  return result;
+}
+
+function getTrailingChar(node: PMNode): string {
+  if (node.isText) return node.text?.slice(-1) ?? "";
+
+  const children: PMNode[] = [];
+  node.forEach((child) => children.push(child));
+  for (let i = children.length - 1; i >= 0; i -= 1) {
+    const result = getTrailingChar(children[i]);
+    if (result) return result;
+  }
+  return "";
+}
+
+function isWordChar(char: string): boolean {
+  return /[\p{L}\p{N}]/u.test(char);
+}
+
+function normalizeFragmentContent(fragment: Fragment, inCodeBlock = false): Fragment {
+  const originalChildren: PMNode[] = [];
+  fragment.forEach((child) => originalChildren.push(child));
+
+  const children = originalChildren.map((child) =>
+    normalizeDocumentBreaks(child, inCodeBlock)
+  );
+
+  let changed = children.some((child, idx) => child !== originalChildren[idx]);
+
+  if (!inCodeBlock) {
+    for (let i = 0; i < children.length; i += 1) {
+      const child = children[i];
+      if (child.type.name !== "hard_break") continue;
+
+      const prevChar = i > 0 ? getTrailingChar(children[i - 1]) : "";
+      const nextChar = i < children.length - 1 ? getLeadingChar(children[i + 1]) : "";
+
+      if (isWordChar(prevChar) && isWordChar(nextChar)) {
+        children[i] = child.type.schema.text(" ");
+        changed = true;
+      }
+    }
+  }
+
+  return changed ? Fragment.fromArray(children) : fragment;
+}
+
+function normalizeDocumentBreaks(node: PMNode, inCodeBlock = false): PMNode {
+  const insideCodeBlock = inCodeBlock || node.type.name === "code_block";
+
+  if (node.isText && !insideCodeBlock && node.text) {
+    const normalizedText = normalizeInlineText(node.text);
+    if (normalizedText !== node.text) {
+      return node.type.schema.text(normalizedText, node.marks);
+    }
+    return node;
+  }
+
+  if (node.isLeaf) return node;
+
+  const normalizedContent = normalizeFragmentContent(node.content, insideCodeBlock);
+  if (normalizedContent === node.content) return node;
+  return node.copy(normalizedContent);
+}
+
+function normalizeSlice(slice: Slice): Slice {
+  const normalizedContent = normalizeFragmentContent(slice.content, false);
+  if (normalizedContent === slice.content) return slice;
+  return new Slice(normalizedContent, slice.openStart, slice.openEnd);
+}
+
+function normalizePastedPlainText(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u00ad\u200b\u200c\u200d\u2060\ufeff]/g, "")
+    .replace(/[\u2028\u2029]/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/([^\n])\n([^\n])/g, "$1 $2");
+}
 
 function PureEditor({
   content,
@@ -105,12 +202,32 @@ function PureEditor({
       });
 
       const initialEditorState = EditorState.create({
-        doc: buildDocumentFromContent(content),
+        doc: normalizeDocumentBreaks(buildDocumentFromContent(content)),
         plugins: plugins,
       });
 
       view = new EditorView(containerRef.current, {
         state: initialEditorState,
+        clipboardTextParser: (text, _context, _plain, view) => {
+          const normalized = normalizePastedPlainText(text);
+          const schema = view.state.schema;
+          const paragraph = schema.nodes.paragraph;
+
+          if (!paragraph) return Slice.empty;
+
+          const blocks = normalized.split(/\n{2,}/).filter(Boolean);
+          if (blocks.length === 0) return Slice.empty;
+
+          const paragraphNodes = blocks.map((block) =>
+            paragraph.create(
+              null,
+              block.length > 0 ? schema.text(block) : undefined
+            )
+          );
+
+          return new Slice(Fragment.fromArray(paragraphNodes), 0, 0);
+        },
+        transformPasted: (slice) => normalizeSlice(slice),
         handleDOMEvents: {
           focus: (view) => {
             setActiveEditorView(view);
@@ -124,7 +241,19 @@ function PureEditor({
 
           const oldEditorState = editorView.state;
           const oldSaveState = savePluginKey.getState(oldEditorState);
-          const newState = editorView.state.apply(transaction);
+          let newState = editorView.state.apply(transaction);
+
+          const normalizedDoc = normalizeDocumentBreaks(newState.doc);
+          if (!normalizedDoc.eq(newState.doc)) {
+            const normalizeTr = newState.tr.replaceWith(
+              0,
+              newState.doc.content.size,
+              normalizedDoc.content
+            );
+            normalizeTr.setMeta("addToHistory", false);
+            newState = newState.apply(normalizeTr);
+          }
+
           editorView.updateState(newState);
 
           const newSaveState = savePluginKey.getState(newState);
@@ -174,7 +303,7 @@ function PureEditor({
           isCurrentVersion: () => !!isCurrentVersionRef.current,
         });
 
-        const newDoc = buildDocumentFromContent(content);
+        const newDoc = normalizeDocumentBreaks(buildDocumentFromContent(content));
         const newState = EditorState.create({
           doc: newDoc,
           plugins: newPlugins,
@@ -187,7 +316,7 @@ function PureEditor({
           if (saveState?.isDirty) {
             console.warn("[Editor] External content update received, but editor is dirty. Ignoring update.");
           } else {
-            const newDocument = buildDocumentFromContent(content);
+            const newDocument = normalizeDocumentBreaks(buildDocumentFromContent(content));
             const transaction = currentView.state.tr.replaceWith(
               0,
               currentView.state.doc.content.size,

@@ -42,6 +42,25 @@ interface SuggestionOverlayProps {
   position?: { x: number; y: number };
 }
 
+function normalizeSuggestionText(value: string): string {
+  if (!value) return value;
+
+  let normalized = value
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\n")
+    .replace(/\\t/g, "  ")
+    .replace(/[\u2028\u2029]/g, "\n");
+
+  normalized = normalized
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/g, ""))
+    .join("\n");
+
+  return normalized;
+}
+
 export default function SuggestionOverlay({
   documentId,
   selectedText = "",
@@ -65,25 +84,21 @@ export default function SuggestionOverlay({
   const { customInstructions, writingStyleSummary, applyStyle } = useAiOptionsValue();
   const { setSuggestionIsLoading } = useSuggestionOverlay();
 
-  // Effect to inform provider about loading state changes
   useEffect(() => {
     setSuggestionIsLoading(isGenerating);
   }, [isGenerating, setSuggestionIsLoading]);
 
-  // Function to truncate text to first 5 words
   const truncateText = (text: string, wordCount = 5) => {
     const words = text.split(/\s+/);
     if (words.length <= wordCount) return text;
     return words.slice(0, wordCount).join(" ") + "...";
   };
 
-  // Update current position when initial position prop changes
   useEffect(() => {
     setCurrentPosition(position);
   }, [position]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // Only allow dragging from the header
     if (!(e.target as HTMLElement).closest(".drag-handle")) return;
 
     e.preventDefault();
@@ -107,11 +122,9 @@ export default function SuggestionOverlay({
       const overlayWidth = overlayRef.current?.offsetWidth || 0;
       const overlayHeight = overlayRef.current?.offsetHeight || 0;
 
-      // Calculate new position
       let newX = e.clientX - dragOffset.x;
       let newY = e.clientY - dragOffset.y;
 
-      // Constrain to viewport bounds with padding
       const padding = 10;
       newX = Math.max(
         padding,
@@ -131,7 +144,6 @@ export default function SuggestionOverlay({
     setIsDragging(false);
   }, []);
 
-  // Add and remove mouse move and up listeners
   useEffect(() => {
     if (isDragging) {
       window.addEventListener("mousemove", handleMouseMove);
@@ -144,7 +156,6 @@ export default function SuggestionOverlay({
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  // Reset state when the overlay opens
   useEffect(() => {
     if (isOpen) {
       setIsGenerating(false);
@@ -158,7 +169,6 @@ export default function SuggestionOverlay({
     }
   }, [isOpen, selectedText]);
 
-  // Close and cleanup when the component unmounts
   useEffect(() => {
     return () => {
       if (eventSourceRef.current) {
@@ -167,37 +177,31 @@ export default function SuggestionOverlay({
     };
   }, []);
 
-  // Focus input when overlay opens
   useEffect(() => {
     if (isOpen && inputRef.current) {
       setTimeout(() => inputRef.current?.focus(), 10);
     }
   }, [isOpen]);
 
-  // Adjust position to ensure overlay is visible within viewport
   useEffect(() => {
     if (isOpen && overlayRef.current) {
       const overlay = overlayRef.current;
       const rect = overlay.getBoundingClientRect();
 
-      // Check if overlay is outside viewport
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
 
       let adjustedX = currentPosition.x;
       let adjustedY = currentPosition.y;
 
-      // Adjust horizontal position if needed
       if (rect.right > viewportWidth) {
         adjustedX = viewportWidth - rect.width - 10;
       }
 
-      // Adjust vertical position if needed
       if (rect.bottom > viewportHeight) {
         adjustedY = viewportHeight - rect.height - 10;
       }
 
-      // Update position if adjustments were made
       if (adjustedX !== currentPosition.x || adjustedY !== currentPosition.y) {
         overlay.style.left = `${adjustedX}px`;
         overlay.style.top = `${adjustedY}px`;
@@ -215,11 +219,9 @@ export default function SuggestionOverlay({
         !isGenerating &&
         suggestion
       ) {
-        // Cmd+Enter to accept suggestion
         setSuggestionIsLoading(true);
         setTimeout(() => onAcceptSuggestion(suggestion), 300);
       } else if ((e.metaKey || e.ctrlKey) && e.key === "Backspace") {
-        // Cmd+Backspace to reject suggestion
         onClose();
       }
     },
@@ -238,9 +240,6 @@ export default function SuggestionOverlay({
         overlayRef.current &&
         !overlayRef.current.contains(event.target as Node)
       ) {
-        // Only close if the click is truly outside and not on some other interactive element
-        // that might be part of a larger system (e.g., a global command palette that opened it).
-        // For now, a simple check is fine.
         onClose();
       }
     },
@@ -269,7 +268,6 @@ export default function SuggestionOverlay({
         return;
       }
 
-      // Don't proceed if no text was selected for suggestion context
       if (!selectedText || selectedText.trim() === "") {
         toast.warning("Please select text to generate a suggestion for");
         return;
@@ -278,15 +276,13 @@ export default function SuggestionOverlay({
       setIsGenerating(true);
       setError(null);
       setSuggestion("");
-      setOriginalContent(selectedText); // Keep track of original content
+      setOriginalContent(selectedText);
 
-      // Close any existing connection
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
 
       try {
-        // Create URL with parameters for EventSource
         const params = new URLSearchParams({
           documentId,
           description: prompt.trim(),
@@ -296,7 +292,6 @@ export default function SuggestionOverlay({
           params.append("selectedText", selectedText);
         }
 
-        // Only add custom instructions if they exist
         if (customInstructions) {
           params.append("customInstructions", customInstructions);
         }
@@ -312,7 +307,6 @@ export default function SuggestionOverlay({
           customInstructions: customInstructions ? "(custom)" : "(none)",
         });
 
-        // Create new EventSource connection
         const eventSource = new EventSource(url);
         eventSourceRef.current = eventSource;
 
@@ -330,7 +324,6 @@ export default function SuggestionOverlay({
 
             switch (data.type) {
               case "id":
-                // Document ID confirmation, nothing to do
                 break;
 
               case "original":
@@ -338,11 +331,12 @@ export default function SuggestionOverlay({
                 break;
 
               case "clear":
-                // Clear current content if needed
                 break;
 
               case "suggestion-delta":
-                setSuggestion((prev) => prev + data.content);
+                setSuggestion((prev) =>
+                  normalizeSuggestionText(`${prev}${String(data.content ?? "")}`)
+                );
                 break;
 
               case "error":
@@ -387,12 +381,11 @@ export default function SuggestionOverlay({
     [handleSubmitPrompt, inputValue]
   );
 
-  // Handle accept with a quick pulse animation before applying suggestion
   const handleAcceptSuggestion = useCallback(
     (suggestedText: string) => {
       setSuggestionIsLoading(true);
       setTimeout(() => {
-        onAcceptSuggestion(suggestedText);
+        onAcceptSuggestion(normalizeSuggestionText(suggestedText));
       }, 300);
     },
     [onAcceptSuggestion, setSuggestionIsLoading]
@@ -420,7 +413,6 @@ export default function SuggestionOverlay({
           transition={{ duration: 0.2 }}
         >
           <div className="px-3 py-2 space-y-2">
-            {/* Header with close button */}
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2 drag-handle cursor-move">
                 <GripVertical size={14} className="text-muted-foreground" />
@@ -444,7 +436,6 @@ export default function SuggestionOverlay({
               </TooltipProvider>
             </div>
 
-            {/* Selected text collapsible section */}
             {selectedText && (
               <div className="border rounded-md overflow-hidden bg-muted/30">
                 <button
@@ -471,7 +462,6 @@ export default function SuggestionOverlay({
               </div>
             )}
 
-            {/* Input field */}
             <div>
               <input
                 ref={inputRef}
@@ -493,14 +483,12 @@ export default function SuggestionOverlay({
               />
             </div>
 
-            {/* Error message */}
             {error && (
               <div className="p-2 bg-destructive/10 border border-destructive/20 rounded-md text-xs text-destructive">
                 {error}
               </div>
             )}
 
-            {/* Diff view for original vs suggestion */}
             {(isGenerating || suggestion) && originalContent && (
               <div className="border rounded-lg overflow-hidden bg-muted/30">
                 <div className="p-2 max-h-[300px] overflow-y-auto">
@@ -510,7 +498,6 @@ export default function SuggestionOverlay({
                   />
                 </div>
 
-                {/* Action buttons - only show on completion */}
                 {!isGenerating && suggestion && (
                   <div className="flex justify-end gap-2 p-2 border-t bg-background/50">
                     <TooltipProvider>
@@ -546,7 +533,6 @@ export default function SuggestionOverlay({
                   </div>
                 )}
 
-                {/* Show loading state with spinner */}
                 {isGenerating && (
                   <div className="flex justify-center items-center p-2 border-t bg-background/50">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
