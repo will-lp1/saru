@@ -56,16 +56,18 @@ export const Blog: React.FC<BlogProps> = ({
 
   return (
     <main className="min-h-screen bg-background" style={mainStyle}>
-      <article className={`prose dark:prose-invert mx-auto py-16 px-4 sm:px-6 lg:px-8 ${fontClass}`} style={proseStyle}>
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tighter mb-8">{title}</h1>
-        {(author || date) && (
-          <div className="text-sm mb-6 flex items-center space-x-2 text-muted-foreground">
-            {author && <span>By <strong>{author}</strong></span>}
-            {date && <span>{date}</span>}
-          </div>
-        )}
-        <Markdown>{content}</Markdown>
-      </article>
+      <div className="mx-auto w-full max-w-4xl py-16 px-4 sm:px-6 lg:px-8">
+        <article className={`prose dark:prose-invert w-full ${fontClass}`} style={proseStyle}>
+          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tighter mb-8">{title}</h1>
+          {(author || date) && (
+            <div className="text-sm mb-6 flex items-center space-x-2 text-muted-foreground">
+              {author && <span>By <strong>{author}</strong></span>}
+              {date && <span>{date}</span>}
+            </div>
+          )}
+          <Markdown>{content}</Markdown>
+        </article>
+      </div>
     </main>
   );
 }; 
