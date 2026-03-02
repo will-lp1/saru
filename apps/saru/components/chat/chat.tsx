@@ -243,20 +243,6 @@ export function Chat({
     };
   }, [chatId]);
 
-  useEffect(() => {
-    const handleChatIdChanged = (event: CustomEvent<{ oldChatId: string, newChatId: string }>) => {
-      const { oldChatId, newChatId } = event.detail;
-
-      if (oldChatId === chatId) {
-      }
-    };
-    
-    window.addEventListener('chat-id-changed', handleChatIdChanged as unknown as EventListener);
-    
-    return () => {
-      window.removeEventListener('chat-id-changed', handleChatIdChanged as unknown as EventListener);
-    };
-  }, [chatId]);
 
   useEffect(() => {
     const handleReset = () => {

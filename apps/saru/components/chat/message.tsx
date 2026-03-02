@@ -22,18 +22,10 @@ import { useDocument } from "@/hooks/use-document";
 function formatMessageWithMentions(content: string) {
   if (!content) return content;
 
-  const mentionRegex = /@([a-zA-Z0-9\s_-]+)/g;
-
-  const parts = content.split(mentionRegex);
-
-  if (parts.length <= 1) return content;
-
   const formattedContent = [];
-  let i = 0;
-
   let match;
   let lastIndex = 0;
-  const regex = new RegExp(mentionRegex);
+  const regex = /@([a-zA-Z0-9\s_-]+)/g;
 
   while ((match = regex.exec(content)) !== null) {
     if (match.index > lastIndex) {
@@ -84,7 +76,6 @@ const PurePreviewMessage = ({
   const { document } = useDocument();
   const dispatchedKeysRef = useRef<Set<string>>(new Set());
   const [mode, setMode] = useState<'view' | 'edit'>('view');
-  console.log("[PreviewMessage] Rendering message:", message);
 
   const reasoningPart = message.parts?.find(
     (part) => part.type === "reasoning"
@@ -96,8 +87,6 @@ const PurePreviewMessage = ({
 
   const toolParts =
     message.parts?.filter((part) => part.type?.startsWith("tool-")) || [];
-
-  console.log("[PreviewMessage] Tool parts found:", toolParts);
 
   return (
     <AnimatePresence>

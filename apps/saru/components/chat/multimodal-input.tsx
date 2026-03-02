@@ -147,12 +147,10 @@ function PureMultimodalInput({
   const { width } = useWindowSize();
   const { document: currentDoc } = useDocument();
   
-  const [fileSuggestions, setFileSuggestions] = useState<DocumentSuggestion[]>([]);
-  const [isSuggestionLoading, setIsSuggestionLoading] = useState(false);
-  const [currentMentionValue, setCurrentMentionValue] = useState('');
   
   const [inputValue, setInputValue] = useState(input);
   const [markupValue, setMarkupValue] = useState('');
+  const [plainTextValue, setPlainTextValue] = useState('');
   const { writingStyleSummary, applyStyle } = useAiOptionsValue();
 
   const [localStorageInput, setLocalStorageInput] = useLocalStorage('input', '');
@@ -172,7 +170,7 @@ function PureMultimodalInput({
   }, [inputValue, markupValue, setInput, setLocalStorageInput, onMentionsChange]);
 
   const parseMentionsFromMarkup = (markup: string): MentionedDocument[] => {
-    const mentionRegex = /@\[([^)]+)\]\\((\\S+)\\)/g;
+    const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
     const mentions: MentionedDocument[] = [];
     let match;
     while ((match = mentionRegex.exec(markup)) !== null) {
@@ -188,7 +186,8 @@ function PureMultimodalInput({
     mentions: Array<{ id: string; display: string }>
   ) => {
     setInputValue(newValue);
-    setMarkupValue(newPlainTextValue);
+    setMarkupValue(newValue);
+    setPlainTextValue(newPlainTextValue);
   };
 
 
@@ -205,7 +204,7 @@ function PureMultimodalInput({
       contextData.mentionedDocumentIds = confirmedMentions.map(doc => doc.id);
     }
     
-    const parts: any[] = [{ type: 'text', text: inputValue }];
+    const parts: any[] = [{ type: 'text', text: plainTextValue || inputValue }];
 
     const requestBody = {
       chatId: chatId,
@@ -225,6 +224,7 @@ function PureMultimodalInput({
 
     setInputValue('');
     setMarkupValue('');
+    setPlainTextValue('');
     setInput('');
     onMentionsChange([]);
 
@@ -233,6 +233,7 @@ function PureMultimodalInput({
     }
   }, [
     inputValue,
+    plainTextValue,
     currentDoc.documentId,
     confirmedMentions,
     sendMessage,
@@ -246,27 +247,24 @@ function PureMultimodalInput({
     callback: (data: SuggestionDataItem[]) => void
   ) => {
     if (!query) {
-      setFileSuggestions([]);
       callback([]);
       return;
     }
-    setIsSuggestionLoading(true);
     fetch(`/api/search?query=${encodeURIComponent(query)}`)
-      .then(response => response.json())
+      .then(response => {
+        if (!response.ok) throw new Error(response.statusText);
+        return response.json();
+      })
       .then(data => {
         const suggestions = (data.results || []).map((doc: any) => ({
           id: doc.id,
           display: doc.title,
         }));
-        setFileSuggestions(suggestions);
         callback(suggestions);
       })
       .catch(error => {
         console.error('Error searching documents:', error);
         callback([]);
-      })
-      .finally(() => {
-        setIsSuggestionLoading(false);
       });
   };
 

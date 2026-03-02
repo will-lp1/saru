@@ -46,6 +46,7 @@ async function createEnhancedSystemPrompt({
   customInstructions,
   writingStyleSummary,
   applyStyle,
+  userId,
   availableTools = ['streamingDocument','updateDocument','webSearch'] as Array<'streamingDocument'|'updateDocument'|'webSearch'>,
 }: {
   selectedChatModel: string;
@@ -54,11 +55,11 @@ async function createEnhancedSystemPrompt({
   customInstructions?: string | null;
   writingStyleSummary?: string | null;
   applyStyle?: boolean;
+  userId: string;
   availableTools?: Array<'streamingDocument'|'updateDocument'|'webSearch'>;
 }) {
 
   let basePrompt = systemPrompt({ selectedChatModel, availableTools });
-  let contextAdded = false;
 
   if (customInstructions) {
     basePrompt = customInstructions + "\n\n" + basePrompt;
@@ -72,7 +73,7 @@ async function createEnhancedSystemPrompt({
   if (activeDocumentId) {
     try {
       const document = await getDocumentById({ id: activeDocumentId });
-      if (document) {
+      if (document && document.userId === userId) {
         const documentContext = `
 CURRENT DOCUMENT:
 Title: ${document.title}
@@ -80,9 +81,9 @@ Content:
 ${document.content || '(Empty document)'}
 `;
         basePrompt += `\n\n${documentContext}`;
-        contextAdded = true;
       }
     } catch (error) {
+      console.error(`[Chat] Failed to load active document ${activeDocumentId}:`, error);
     }
   }
 
@@ -93,7 +94,7 @@ ${document.content || '(Empty document)'}
 
       try {
         const document = await getDocumentById({ id: mentionedId });
-        if (document) {
+        if (document && document.userId === userId) {
           const mentionedContext = `
 MENTIONED DOCUMENT:
 Title: ${document.title}
@@ -101,9 +102,9 @@ Content:
 ${document.content || '(Empty document)'}
 `;
           basePrompt += `\n${mentionedContext}`;
-          contextAdded = true;
         }
       } catch (error) {
+        console.error(`[Chat] Failed to load mentioned document ${mentionedId}:`, error);
       }
     }
     basePrompt += `\n--- END MENTIONED DOCUMENTS ---`;
@@ -335,6 +336,7 @@ export async function POST(request: Request) {
       customInstructions,
       writingStyleSummary,
       applyStyle,
+      userId,
       availableTools: activeToolsList,
     });
 
@@ -386,7 +388,7 @@ export async function POST(request: Request) {
               chatId,
               userId,
               context: {
-                active: activeDocumentId || undefined,
+                active: validatedActiveDocumentId,
                 mentioned: mentionedDocumentIds,
               },
             });

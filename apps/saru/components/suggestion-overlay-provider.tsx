@@ -144,7 +144,7 @@ export function SuggestionOverlayProvider({ children }: { children: ReactNode })
           const { from, to, empty } = state.selection;
 
           if (!empty) {
-            const text = state.doc.textBetween(from, to, ' \\n\\n ');
+            const text = state.doc.textBetween(from, to, ' \n\n ');
             
             let pos = { x: 100, y: 100 }; // Default position
             const domSelection = window.getSelection();
