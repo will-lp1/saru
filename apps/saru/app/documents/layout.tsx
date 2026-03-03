@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+
+export const dynamic = 'force-dynamic';
 import { Chat } from '@/components/chat/chat';
 import { ResizablePanel } from '@/components/resizable-panel';
 import { AppSidebar } from '@/components/sidebar/app-sidebar';
