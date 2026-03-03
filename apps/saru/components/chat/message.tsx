@@ -20,15 +20,46 @@ import { UseChatHelpers } from "@ai-sdk/react";
 import { useRouter } from "next/navigation";
 import { useDocument } from "@/hooks/use-document";
 
+const mentionStyleLight: React.CSSProperties = {
+  backgroundColor: '#dbeafe',
+  padding: '1px 2px',
+  borderRadius: '0.25rem',
+  fontWeight: 500,
+  boxDecorationBreak: 'clone',
+  WebkitBoxDecorationBreak: 'clone',
+  cursor: 'pointer',
+};
+
+const mentionStyleDark: React.CSSProperties = {
+  backgroundColor: 'rgba(59, 130, 246, 0.2)',
+  padding: '1px 2px',
+  borderRadius: '0.25rem',
+  fontWeight: 500,
+  boxDecorationBreak: 'clone',
+  WebkitBoxDecorationBreak: 'clone',
+  cursor: 'pointer',
+};
+
 function MentionChip({ title, id }: { title: string; id: string }) {
   const router = useRouter();
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    setIsDark(document.documentElement.classList.contains('dark'));
+    const observer = new MutationObserver(() =>
+      setIsDark(document.documentElement.classList.contains('dark'))
+    );
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <span
       role="button"
       tabIndex={0}
       onClick={() => router.push(`/documents/${id}`)}
       onKeyDown={(e: any) => e.key === 'Enter' && router.push(`/documents/${id}`)}
-      className="bg-[#dbeafe] dark:bg-blue-500/20 px-0.5 py-px rounded font-medium box-decoration-clone cursor-pointer"
+      style={isDark ? mentionStyleDark : mentionStyleLight}
     >
       @{title}
     </span>
