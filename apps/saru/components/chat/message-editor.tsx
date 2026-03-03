@@ -23,7 +23,7 @@ export function MessageEditor({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const textParts = message.parts?.filter(part => part.type === 'text') || [];
-  const initialContent = textParts.map(part => part.text).join('');
+  const initialContent = textParts.map(part => part.text).join('').replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1');
     
   const [draftContent, setDraftContent] = useState<string>(initialContent);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
