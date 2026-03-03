@@ -19,8 +19,6 @@ import Image from "next/image";
 import { UseChatHelpers } from "@ai-sdk/react";
 import { useDocument } from "@/hooks/use-document";
 
-const MENTION_RE = /@\[([^\]]+)\]\(([^)]+)\)/g;
-
 function MentionChip({ title, id }: { title: string; id: string }) {
   const { loadDocument } = useDocument();
   return (
@@ -38,11 +36,11 @@ function MentionChip({ title, id }: { title: string; id: string }) {
 }
 
 function MessageContent({ content }: { content: string }) {
-  if (!MENTION_RE.test(content)) return <Markdown>{content}</Markdown>;
+  if (!content.includes('@[')) return <Markdown>{content}</Markdown>;
 
   const parts: React.ReactNode[] = [];
   let last = 0;
-  for (const match of content.matchAll(new RegExp(MENTION_RE.source, 'g'))) {
+  for (const match of content.matchAll(/@\[([^\]]+)\]\(([^)]+)\)/g)) {
     if (match.index! > last) parts.push(<Markdown key={last}>{content.slice(last, match.index)}</Markdown>);
     parts.push(<MentionChip key={match.index} title={match[1]} id={match[2]} />);
     last = match.index! + match[0].length;
