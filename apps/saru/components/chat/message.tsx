@@ -20,9 +20,10 @@ import { UseChatHelpers } from "@ai-sdk/react";
 import { useRouter } from "next/navigation";
 import { useDocument } from "@/hooks/use-document";
 
-const mentionStyleLight: React.CSSProperties = {
+const mentionStyleAssistantLight: React.CSSProperties = {
   backgroundColor: '#dbeafe',
-  padding: '1px 2px',
+  color: '#1d4ed8',
+  padding: '1px 3px',
   borderRadius: '0.25rem',
   fontWeight: 500,
   boxDecorationBreak: 'clone',
@@ -30,9 +31,10 @@ const mentionStyleLight: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-const mentionStyleDark: React.CSSProperties = {
+const mentionStyleAssistantDark: React.CSSProperties = {
   backgroundColor: 'rgba(59, 130, 246, 0.2)',
-  padding: '1px 2px',
+  color: '#93c5fd',
+  padding: '1px 3px',
   borderRadius: '0.25rem',
   fontWeight: 500,
   boxDecorationBreak: 'clone',
@@ -40,7 +42,18 @@ const mentionStyleDark: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-function MentionChip({ title, id }: { title: string; id: string }) {
+// Inside the user bubble (bg-primary) — semi-transparent white works on any primary color
+const mentionStyleUserBubble: React.CSSProperties = {
+  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  padding: '1px 3px',
+  borderRadius: '0.25rem',
+  fontWeight: 600,
+  boxDecorationBreak: 'clone',
+  WebkitBoxDecorationBreak: 'clone',
+  cursor: 'pointer',
+};
+
+function MentionChip({ title, id, isUserMessage }: { title: string; id: string; isUserMessage?: boolean }) {
   const router = useRouter();
   const [isDark, setIsDark] = useState(false);
 
@@ -53,27 +66,31 @@ function MentionChip({ title, id }: { title: string; id: string }) {
     return () => observer.disconnect();
   }, []);
 
+  const style = isUserMessage
+    ? mentionStyleUserBubble
+    : isDark ? mentionStyleAssistantDark : mentionStyleAssistantLight;
+
   return (
     <span
       role="button"
       tabIndex={0}
       onClick={() => router.push(`/documents/${id}`)}
       onKeyDown={(e: any) => e.key === 'Enter' && router.push(`/documents/${id}`)}
-      style={isDark ? mentionStyleDark : mentionStyleLight}
+      style={style}
     >
       @{title}
     </span>
   );
 }
 
-function MessageContent({ content }: { content: string }) {
+function MessageContent({ content, isUserMessage }: { content: string; isUserMessage?: boolean }) {
   if (!content.includes('@[')) return <Markdown>{content}</Markdown>;
 
   const parts: React.ReactNode[] = [];
   let last = 0;
   for (const match of content.matchAll(/@\[([^\]]+)\]\(([^)]+)\)/g)) {
     if (match.index! > last) parts.push(<Markdown key={last}>{content.slice(last, match.index)}</Markdown>);
-    parts.push(<MentionChip key={match.index} title={match[1]} id={match[2]} />);
+    parts.push(<MentionChip key={match.index!} title={match[1]} id={match[2]} isUserMessage={isUserMessage} />);
     last = match.index! + match[0].length;
   }
   if (last < content.length) parts.push(<Markdown key={last}>{content.slice(last)}</Markdown>);
@@ -167,7 +184,7 @@ const PurePreviewMessage = ({
                       })}
                     >
                       {typeof textContent === "string" ? (
-                        <MessageContent content={textContent} />
+                        <MessageContent content={textContent} isUserMessage={message.role === 'user'} />
                       ) : (
                         <pre className="text-sm text-red-500">
                           Error: Invalid message content format

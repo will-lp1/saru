@@ -23,8 +23,15 @@ export function MessageEditor({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const textParts = message.parts?.filter(part => part.type === 'text') || [];
-  const initialContent = textParts.map(part => part.text).join('').replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1');
-    
+  const originalMarkup = textParts.map(part => part.text).join('');
+
+  const mentionMap = new Map<string, string>();
+  for (const match of originalMarkup.matchAll(/@\[([^\]]+)\]\(([^)]+)\)/g)) {
+    mentionMap.set(match[1], match[2]);
+  }
+
+  const initialContent = originalMarkup.replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1');
+
   const [draftContent, setDraftContent] = useState<string>(initialContent);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -74,6 +81,12 @@ export function MessageEditor({
           onClick={async () => {
             setIsSubmitting(true);
 
+            // Restore markup for any mentions still present in the draft
+            let finalText = draftContent;
+            for (const [title, id] of mentionMap) {
+              finalText = finalText.split(`@${title}`).join(`@[${title}](${id})`);
+            }
+
             await deleteTrailingMessages({
               id: message.id,
             });
@@ -84,7 +97,7 @@ export function MessageEditor({
               if (index !== -1) {
                 const updatedMessage: UIMessage = {
                   ...message,
-                  parts: [{ type: 'text', text: draftContent }],
+                  parts: [{ type: 'text', text: finalText }],
                 };
 
                 return [...messages.slice(0, index), updatedMessage];
