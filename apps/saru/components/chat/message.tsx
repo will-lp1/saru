@@ -25,23 +25,24 @@ function formatMessageWithMentions(content: string) {
   const formattedContent = [];
   let match;
   let lastIndex = 0;
-  const regex = /@([a-zA-Z0-9\s_-]+)/g;
+  const regex = /@\[([^\]]+)\]\(([^)]+)\)/g;
 
   while ((match = regex.exec(content)) !== null) {
     if (match.index > lastIndex) {
       formattedContent.push(content.substring(lastIndex, match.index));
     }
 
-    const documentName = match[1];
+    const title = match[1];
+    const id = match[2];
     formattedContent.push(
-      `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-sm font-medium">
+      `<a href="/documents/${id}" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-sm font-medium hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors no-underline">
         <span class="text-blue-500 dark:text-blue-400">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path fill-rule="evenodd" clip-rule="evenodd" d="M14.5 13.5V6.5V5.41421C14.5 5.149 14.3946 4.89464 14.2071 4.70711L9.79289 0.292893C9.60536 0.105357 9.351 0 9.08579 0H8H3H1.5V1.5V13.5C1.5 14.8807 2.61929 16 4 16H12C13.3807 16 14.5 14.8807 14.5 13.5ZM13 13.5V6.5H9.5H8V5V1.5H3V13.5C3 14.0523 3.44772 14.5 4 14.5H12C12.5523 14.5 13 14.0523 13 13.5ZM9.5 5V2.12132L12.3787 5H9.5Z" fill="currentColor"/>
           </svg>
         </span>
-        ${documentName}
-      </span>`
+        ${title}
+      </a>`
     );
 
     lastIndex = match.index + match[0].length;

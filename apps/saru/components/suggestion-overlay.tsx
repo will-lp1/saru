@@ -334,9 +334,7 @@ export default function SuggestionOverlay({
                 break;
 
               case "suggestion-delta":
-                setSuggestion((prev) =>
-                  normalizeSuggestionText(`${prev}${String(data.content ?? "")}`)
-                );
+                setSuggestion((prev) => `${prev}${String(data.content ?? "")}`);
                 break;
 
               case "error":

@@ -261,8 +261,7 @@ function PureEditor({
             onStatusChange(newSaveState);
           }
 
-          // Handle debounced version creation when content changes (only for current version)
-          if (transaction.docChanged && isCurrentVersion) {
+          if (transaction.docChanged && isCurrentVersion && !transaction.getMeta('external')) {
             const currentContent = buildContentFromDocument(newState.doc);
             debouncedVersionHandler(currentContent);
           }

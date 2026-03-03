@@ -204,7 +204,7 @@ function PureMultimodalInput({
       contextData.mentionedDocumentIds = confirmedMentions.map(doc => doc.id);
     }
     
-    const parts: any[] = [{ type: 'text', text: plainTextValue || inputValue }];
+    const parts: any[] = [{ type: 'text', text: inputValue }];
 
     const requestBody = {
       chatId: chatId,
