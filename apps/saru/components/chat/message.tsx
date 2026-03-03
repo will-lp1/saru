@@ -23,13 +23,15 @@ import { useDocument } from "@/hooks/use-document";
 function MentionChip({ title, id }: { title: string; id: string }) {
   const router = useRouter();
   return (
-    <button
-      type="button"
+    <span
+      role="button"
+      tabIndex={0}
       onClick={() => router.push(`/documents/${id}`)}
-      className="bg-[#dbeafe] dark:bg-blue-500/20 px-0.5 py-px rounded font-medium border-0 cursor-pointer"
+      onKeyDown={(e: any) => e.key === 'Enter' && router.push(`/documents/${id}`)}
+      className="bg-[#dbeafe] dark:bg-blue-500/20 px-0.5 py-px rounded font-medium box-decoration-clone cursor-pointer"
     >
       @{title}
-    </button>
+    </span>
   );
 }
 
