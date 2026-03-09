@@ -10,16 +10,17 @@ interface ChatModel {
 export const chatModels: Array<ChatModel> = [
   {
     id: 'chat-model-small',
-    name: 'Llama 4',
-    description: 'Small and fast model',
+    name: 'GPT OSS 120B',
+    description: 'Recommended default model',
   },
   {
     id: 'chat-model-large',
     name: 'Kimi K2',
-    description: 'Large and powerful model',  },
+    description: 'Large and powerful model',
+  },
   {
     id: 'chat-model-reasoning',
-    name: 'GPT OSS',
+    name: 'GPT OSS 120B (Reasoning)',
     description: 'Advanced reasoning model',
   },
 ];
