@@ -7,10 +7,10 @@ import { groq } from '@ai-sdk/groq';
 
 export const myProvider = customProvider({
   languageModels: {
-    'chat-model-small': groq('openai/gpt-oss-20b'),
-    'chat-model-large': groq('openai/gpt-oss-120b'),
+    'chat-model-small': groq('llama-3.1-8b-instant'),
+    'chat-model-large': groq('llama-3.3-70b-versatile'),
     'chat-model-reasoning': wrapLanguageModel({
-      model: groq('deepseek-r1-distill-qwen-32b'),
+      model: groq('openai/gpt-oss-120b'),
       middleware: extractReasoningMiddleware({ tagName: 'think' }),
     }),
     'title-model': groq('openai/gpt-oss-20b'),
